@@ -87,7 +87,11 @@ export function Attendance({ data, busy, mutate }: Props) {
   return (
     <>
       <AttendanceLifecycle data={data} busy={busy} mutate={mutate} />
-      <div className="attendance-counts" aria-label="Attendance totals">
+      <div
+        className="attendance-counts"
+        role="group"
+        aria-label="Attendance totals"
+      >
         <div>
           <strong>{state.ready_count}</strong>
           <span>Checked in</span>
