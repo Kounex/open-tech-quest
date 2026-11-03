@@ -1,0 +1,63 @@
+{
+  "notice": "Red Hat marks and artwork remain owned by Red Hat. Public website assets used for this Red Hat event; not covered by the application code license. Original internal catalogue archives are not included.",
+  "assets": {
+    "ai.webp": {
+      "source": "https://www.redhat.com/rhdc/managed-files/AI-tech-icon-hybrid-style%402x-v2_0.webp",
+      "owner": "Red Hat, Inc."
+    },
+    "rhel.png": {
+      "source": "https://www.redhat.com/rhdc/managed-files/RHEL-tech-icon-hybrid-style-v2_0.png",
+      "owner": "Red Hat, Inc."
+    },
+    "openshift.png": {
+      "source": "https://www.redhat.com/rhdc/managed-files/OS-tech-icon-hybrid-style_0.png",
+      "owner": "Red Hat, Inc."
+    },
+    "ansible.png": {
+      "source": "https://www.redhat.com/rhdc/managed-files/Ansible-tech-icon-hybrid-style_0.png",
+      "owner": "Red Hat, Inc."
+    },
+    "redhat-on-dark.svg": {
+      "source": "https://static.redhat.com/libs/redhat/brand-assets/2/corp/logo--on-dark.svg",
+      "owner": "Red Hat, Inc."
+    },
+    "redhat-on-light.svg": {
+      "source": "https://static.redhat.com/libs/redhat/brand-assets/2/corp/logo.svg",
+      "owner": "Red Hat, Inc."
+    },
+    "red-hat-display-400.ttf": {
+      "source": "https://fonts.gstatic.com/s/redhatdisplay/v21/8vIf7wUr0m80wwYf0QCXZzYzUoTK8RZQvRd-D1NYbmyWckg.ttf",
+      "license": "SIL Open Font License 1.1"
+    },
+    "red-hat-display-500.ttf": {
+      "source": "https://fonts.gstatic.com/s/redhatdisplay/v21/8vIf7wUr0m80wwYf0QCXZzYzUoTK8RZQvRd-D1NYbl6Wckg.ttf",
+      "license": "SIL Open Font License 1.1"
+    },
+    "red-hat-display-600.ttf": {
+      "source": "https://fonts.gstatic.com/s/redhatdisplay/v21/8vIf7wUr0m80wwYf0QCXZzYzUoTK8RZQvRd-D1NYbrKRckg.ttf",
+      "license": "SIL Open Font License 1.1"
+    },
+    "red-hat-text-400.ttf": {
+      "source": "https://fonts.gstatic.com/s/redhattext/v19/RrQCbohi_ic6B3yVSzGBrMx6ZI_cy1A6Ok2ML7hwVrY.ttf",
+      "license": "SIL Open Font License 1.1"
+    },
+    "red-hat-text-500.ttf": {
+      "source": "https://fonts.gstatic.com/s/redhattext/v19/RrQCbohi_ic6B3yVSzGBrMx6ZI_cy1A6Ok2ML4pwVrY.ttf",
+      "license": "SIL Open Font License 1.1"
+    },
+    "red-hat-text-600.ttf": {
+      "source": "https://fonts.gstatic.com/s/redhattext/v19/RrQCbohi_ic6B3yVSzGBrMx6ZI_cy1A6Ok2ML2Z3VrY.ttf",
+      "license": "SIL Open Font License 1.1"
+    },
+    "quest-mark.png": {
+      "source": "https://docs.google.com/presentation/d/129CAs9ujrcmLQC9U4r_qddMf7tCb4WLAOIoOPGXHQJM/edit#slide=id.h102b67320974a3a4_12_6",
+      "owner": "Red Hat / Open Tech Quest event organizers",
+      "note": "Original image extracted from slide 5 layout, supplied by organizer for this event; no private slide text or notes included."
+    },
+    "quest-code.png": {
+      "source": "https://docs.google.com/presentation/d/129CAs9ujrcmLQC9U4r_qddMf7tCb4WLAOIoOPGXHQJM/edit#slide=id.h102b67320974a3a4_12_6",
+      "owner": "Red Hat / Open Tech Quest event organizers",
+      "note": "Original image extracted from slide 5 layout, supplied by organizer for this event; no private slide text or notes included."
+    }
+  }
+}

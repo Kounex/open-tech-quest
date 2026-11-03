@@ -1,0 +1,42 @@
+@font-face {
+  font-family: 'Red Hat Display';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/plugins/open_tech_quest/assets/branding/red-hat-display-400.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Red Hat Display';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/plugins/open_tech_quest/assets/branding/red-hat-display-500.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Red Hat Display';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/plugins/open_tech_quest/assets/branding/red-hat-display-600.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Red Hat Text';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/plugins/open_tech_quest/assets/branding/red-hat-text-400.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Red Hat Text';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/plugins/open_tech_quest/assets/branding/red-hat-text-500.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Red Hat Text';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/plugins/open_tech_quest/assets/branding/red-hat-text-600.ttf) format('truetype');
+}
