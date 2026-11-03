@@ -23,7 +23,8 @@ preserved if they have activity; no history is deleted by optimization.
 
 After apply, phase is naming. Any current member can choose the final name once,
 case-insensitively unique; explicit confirmation explains that the name is fixed.
-Concurrent claims serialize; only the first succeeds. Organizer corrections need
+Concurrent claims serialize; only the first succeeds. Generated Team NN
+placeholders must change; an existing meaningful provisional name may be confirmed. Organizer corrections need
 a reason and audit entry. Team rosters and names are frozen at finalization;
 competition start requires finalized rosters and all competing teams named.
 Existing live/closed events migrate without changing their eligibility or clocks.
@@ -37,6 +38,13 @@ within capacity. If all groups are full, a reasoned create-late-team action
 creates an additional placeholder team for ready unassigned arrivals without
 reshuffling any existing group. Reopening closed check-in is allowed before apply. After apply,
 no automatic rebalance is offered, because names belong to the final groups.
+Native account bans remain available for moderation without moving frozen roster
+members; banned accounts are excluded from eligible attendance, while all native
+members still count toward capacity. Assigned account role changes freeze after
+apply. Before finalization, organizers may remove ineligible members with a
+reason. Empty unused native team records remain intact and are omitted from
+standings unless they have historical activity.
+
 No self-service native team create/join/invite/rename or native admin mutation may
 bypass this lifecycle. Native password/account settings remain usable. Own-team
 rosters respect the existing roster release setting and expose names/readiness,
@@ -61,7 +69,7 @@ All existing envelopes/authentication/CSRF rules apply. New fields are additive.
 - POST `/admin/onboarding/action`: `{action:close_checkin|reopen_checkin|finalize}`.
   Naming also supports `{action:create_late_team,user_ids:[...],reason}` for
   capacity-limited groups of ready unassigned late arrivals.
-  Finalize checks ready assigned members, capacity, names, no unresolved ready
+  Finalize checks ready eligible assigned members, capacity, names, no unresolved ready
   queue. Non-ready accounts remain outside teams after optimization.
 - POST `/admin/onboarding/optimize`: `{preview:true}` =>
   `{fingerprint,groups:[{team_id:number|null,name,user_ids}],moves:[{user_id,

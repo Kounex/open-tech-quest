@@ -55,7 +55,8 @@ released team's names and check-in state; emails stay organizer-only.
    when no-shows are removed from teams. Check-in can be reopened before applying.
 4. The roster enters **naming**. Any ready member chooses the team's permanent,
    unique name after a confirmation that explains the lock. The first confirmed
-   choice wins, including simultaneous requests from different devices.
+   choice wins, including simultaneous requests from different devices. Generated
+   Team NN placeholders must be replaced with an identity chosen by the team.
 5. Late arrivals can still confirm attendance. After optimization they enter the
    unassigned ready queue; add them manually to a team with free capacity and an
    organizer reason before finalization. If all groups are full, create an
