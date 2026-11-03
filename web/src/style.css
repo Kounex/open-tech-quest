@@ -2191,3 +2191,707 @@ fieldset {
 .stage-footer {
   margin-top: 12px;
 }
+
+/* Personal check-in and organizer attendance use the same calm roster language. */
+.onboarding-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--cyan);
+  border-radius: 8px;
+  padding: 28px 32px;
+  margin: 0 0 32px;
+  scroll-margin-top: 24px;
+}
+.onboarding-loading {
+  padding: 24px 0;
+  color: var(--muted);
+}
+.personal-readiness {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+}
+.personal-readiness h2 {
+  font-size: 28px;
+  margin-bottom: 12px;
+}
+.personal-readiness p {
+  font-size: 15px;
+  max-width: 760px;
+  margin-bottom: 12px;
+}
+.personal-readiness p:last-child {
+  margin-bottom: 0;
+}
+.personal-readiness .eyebrow {
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.personal-readiness > .button {
+  flex-shrink: 0;
+}
+.readiness-confirmed {
+  color: #24634e;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  flex-shrink: 0;
+  animation: enter 180ms var(--ease);
+}
+.onboarding-panel > .notice {
+  margin: 20px 0 0;
+}
+.onboarding-note {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+  margin-top: 24px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.onboarding-note h3 {
+  font-size: 18px;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.onboarding-note p {
+  margin: 0;
+}
+.own-roster {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.own-team-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+.own-team-heading h3 {
+  font-size: 28px;
+  margin: 8px 0 0;
+}
+.teammate-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-width: 880px;
+}
+.teammate-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 0;
+  border-bottom: 1px solid #ececf0;
+  font-size: 15px;
+}
+.teammate-list li:last-child {
+  border: 0;
+}
+.teammate-list small {
+  margin-left: 8px;
+  font-size: 12px;
+}
+.member-ready {
+  color: #24634e;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.member-ready svg {
+  width: 16px;
+  height: 16px;
+}
+.roster-explanation {
+  margin: 16px 0 0;
+  font-size: 13px;
+}
+.team-name-claim {
+  background: #f6f6f8;
+  border: 1px solid var(--line);
+  padding: 24px;
+  margin-top: 24px;
+  max-width: 880px;
+}
+.team-name-claim h3 {
+  font-size: 22px;
+}
+.team-name-claim p {
+  font-size: 14px;
+  color: var(--muted);
+}
+.team-name-claim .field {
+  max-width: 520px;
+}
+.attendance-counts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  background: #fff;
+  margin: 24px 0;
+}
+.attendance-counts > div {
+  padding: 20px 24px;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.attendance-counts > div:last-child {
+  border-right: 0;
+}
+.attendance-counts strong {
+  font-family: "Red Hat Display", Arial, sans-serif;
+  font-size: 32px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.attendance-counts span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.attendance-lifecycle > .section-heading {
+  margin-bottom: 24px;
+}
+.attendance-lifecycle .phase-path {
+  margin-bottom: 24px;
+}
+.attendance-lifecycle .phase-path li {
+  font-size: 13px;
+}
+.attendance-settings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  align-items: center;
+  margin-bottom: 28px;
+}
+.attendance-settings form {
+  display: flex;
+  gap: 16px;
+  align-items: end;
+}
+.attendance-settings .field {
+  margin: 0;
+  max-width: 200px;
+}
+.attendance-settings p {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+}
+.attendance-blocker {
+  font-size: 14px;
+  color: #8d4400;
+  background: #fff6e9;
+  border-left: 3px solid #a46b17;
+  padding: 12px 16px;
+  margin: 20px 0 0;
+  max-width: 960px;
+}
+.attendance-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.attendance-views {
+  display: flex;
+  flex-shrink: 0;
+}
+.attendance-views button {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 12px 16px;
+  min-height: 44px;
+  font-size: 14px;
+}
+.attendance-views button + button {
+  border-left: 0;
+}
+.attendance-views button.active {
+  background: #eaf6f7;
+  color: #006a77;
+  border-bottom: 2px solid var(--cyan);
+}
+.attendance-views button span {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 8px;
+}
+.attendance-search {
+  flex: 1;
+}
+.attendance-search input {
+  width: 100%;
+  font-size: 14px;
+}
+.attendance-toolbar select {
+  font-size: 14px;
+}
+.attendance-team {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+}
+.attendance-team:last-child {
+  border-bottom: 1px solid var(--line);
+}
+.attendance-team summary {
+  cursor: pointer;
+  padding: 16px 20px;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 112px 180px 80px;
+  align-items: center;
+  gap: 20px;
+  min-height: 72px;
+}
+.attendance-team summary:hover {
+  background: #f8f8fa;
+}
+.attendance-team-name {
+  font-size: 16px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.attendance-team-name small {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  margin-top: 4px;
+}
+.attendance-team-size {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.attendance-team-size small {
+  font-size: 12px;
+  margin-left: 4px;
+}
+.attendance-team-body {
+  border-top: 1px solid var(--line);
+  padding: 24px;
+}
+.attendance-team-body > .organizer-member-list {
+  margin-bottom: 24px;
+}
+.attendance-team-body form > .button {
+  margin-top: 20px;
+}
+.organizer-member-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.organizer-member-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 0;
+  border-bottom: 1px solid #ececf0;
+  font-size: 13px;
+}
+.organizer-member-list li > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.organizer-member-list li strong {
+  font-weight: 500;
+  font-size: 14px;
+}
+.organizer-member-list li span {
+  color: var(--muted);
+}
+.attendance-people {
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.attendance-people table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 14px;
+}
+.attendance-people th,
+.attendance-people td {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 400;
+}
+.attendance-people thead th {
+  background: #f0f0f4;
+  font-size: 12px;
+  color: var(--muted);
+}
+.attendance-people tbody th {
+  font-weight: 500;
+}
+.attendance-people tbody tr:last-child > * {
+  border: 0;
+}
+.attendance-people small {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.initial-allocation-preview,
+.optimization-review {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.initial-allocation-preview h3 {
+  font-size: 22px;
+}
+.optimization-totals {
+  display: flex;
+  gap: 32px;
+  margin-bottom: 24px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.optimization-totals strong {
+  font-size: 24px;
+  color: var(--ink);
+  font-weight: 400;
+  margin-right: 4px;
+}
+.optimization-warnings {
+  border-left: 3px solid #a46b17;
+  padding: 16px 20px;
+  background: #fff6e9;
+  margin-bottom: 24px;
+}
+.optimization-warnings h3 {
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+.optimization-warnings ul {
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
+  padding-left: 20px;
+}
+.optimized-groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.optimized-groups > section {
+  border: 1px solid var(--line);
+  padding: 16px 20px;
+}
+.optimized-groups > section > div {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.optimized-groups h3 {
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+.optimized-groups span {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.optimized-groups p {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+.optimization-details {
+  border-block: 1px solid var(--line);
+  padding: 16px 0;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+.optimization-details summary {
+  cursor: pointer;
+}
+.optimization-details ul {
+  list-style: none;
+  padding: 16px 0 0;
+  margin: 0;
+}
+.optimization-details li {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 8px 0;
+}
+.optimization-details li span {
+  color: var(--muted);
+}
+.optimization-details p {
+  margin: 16px 0 0;
+  font-size: 14px;
+}
+.late-placement {
+  display: grid;
+  grid-template-columns:
+    minmax(160px, 1fr) minmax(180px, 1fr) minmax(180px, 1fr)
+    auto;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 0;
+  border-top: 1px solid var(--line);
+}
+.late-placement > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.late-placement strong {
+  font-size: 14px;
+}
+.late-placement > div > span {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.late-placement select,
+.late-placement input {
+  width: 100%;
+  font-size: 13px;
+}
+.late-placement .button {
+  font-size: 13px;
+  padding-inline: 12px;
+}
+.additional-team {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+  margin-top: 12px;
+}
+.additional-team summary {
+  font-size: 15px;
+  cursor: pointer;
+}
+.additional-team > p {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 16px;
+}
+.additional-team legend {
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+.late-team-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.late-team-choices label {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 14px;
+}
+.late-team-choices small {
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.additional-team > .field {
+  max-width: 720px;
+}
+@media (max-width: 1150px) {
+  .attendance-counts > div {
+    padding: 16px;
+  }
+  .attendance-settings {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .attendance-toolbar {
+    flex-wrap: wrap;
+  }
+  .attendance-search {
+    min-width: 240px;
+  }
+  .attendance-team summary {
+    grid-template-columns: minmax(160px, 1fr) 96px 160px;
+    gap: 16px;
+  }
+  .attendance-team summary > .meta:last-child {
+    display: none;
+  }
+  .optimized-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .late-placement {
+    grid-template-columns: 1fr 1fr;
+  }
+  .late-placement > div {
+    grid-column: 1/-1;
+  }
+  .late-placement > .button {
+    justify-self: start;
+  }
+}
+@media (max-width: 760px) {
+  .onboarding-panel {
+    padding: 24px 20px;
+    margin-bottom: 24px;
+  }
+  .personal-readiness {
+    align-items: start;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .personal-readiness h2 {
+    font-size: 26px;
+  }
+  .personal-readiness p {
+    font-size: 14px;
+  }
+  .personal-readiness > .button {
+    align-self: start;
+  }
+  .own-team-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .own-team-heading h3 {
+    font-size: 26px;
+  }
+  .teammate-list li {
+    font-size: 14px;
+    gap: 12px;
+  }
+  .teammate-list li > span:last-child {
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .team-name-claim {
+    padding: 20px;
+  }
+  .attendance-counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .attendance-counts > div {
+    border-bottom: 1px solid var(--line);
+  }
+  .attendance-counts > div:nth-child(even) {
+    border-right: 0;
+  }
+  .attendance-counts > div:last-child {
+    grid-column: 1/-1;
+    border-bottom: 0;
+  }
+  .attendance-counts strong {
+    font-size: 28px;
+  }
+  .attendance-lifecycle .phase-path {
+    flex-wrap: wrap;
+  }
+  .attendance-lifecycle .phase-path li {
+    min-width: 50%;
+    font-size: 12px;
+  }
+  .attendance-settings form {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .attendance-settings .field {
+    max-width: none;
+    width: 100%;
+  }
+  .attendance-settings form > .button {
+    align-self: start;
+  }
+  .attendance-toolbar {
+    gap: 12px;
+  }
+  .attendance-views {
+    width: 100%;
+  }
+  .attendance-views button {
+    flex: 1;
+  }
+  .attendance-search {
+    min-width: 0;
+    width: 100%;
+    flex-basis: 100%;
+  }
+  .attendance-toolbar > label:last-child,
+  .attendance-toolbar select {
+    width: 100%;
+  }
+  .attendance-team summary {
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    padding: 16px;
+    min-height: 88px;
+  }
+  .attendance-team summary > .member-ready,
+  .attendance-team summary > .meta {
+    grid-column: 1/-1;
+    font-size: 12px;
+  }
+  .attendance-team summary > .meta:last-child {
+    display: none;
+  }
+  .attendance-team-size {
+    font-size: 18px;
+  }
+  .attendance-team-size small {
+    font-size: 11px;
+  }
+  .attendance-team-body {
+    padding: 20px 16px;
+  }
+  .organizer-member-list li {
+    align-items: start;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .attendance-people table {
+    min-width: 560px;
+  }
+  .attendance-people th,
+  .attendance-people td {
+    padding: 12px 16px;
+  }
+  .optimization-totals {
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 13px;
+  }
+  .optimized-groups {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .optimization-details li {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .late-placement {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .late-placement > div {
+    grid-column: auto;
+  }
+  .late-team-choices {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .additional-team .dialog {
+    max-width: 100%;
+  }
+}

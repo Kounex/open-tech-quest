@@ -4,6 +4,7 @@ import type { Bootstrap, Challenge, Room, Step } from "./types";
 import { useResource } from "./hooks";
 import { Arrow, Check, Empty, Link, Markdown, Notice } from "./ui";
 import { RoomArt, RoomLogo, roomThemeStyle } from "./room-art";
+import { ParticipantOnboarding } from "./onboarding";
 export function EventNotice({ data }: { data: Bootstrap }) {
   const { event, viewer } = data;
   return (
@@ -42,8 +43,10 @@ export function EventNotice({ data }: { data: Bootstrap }) {
         </Notice>
       ) : !viewer.team_id && !viewer.admin ? (
         <Notice>
-          Your account is ready. Your team assignment will appear here when the
-          organizers release the rosters.
+          <Link href="/quest#your-team">
+            Check in and see your team in the quest lobby
+          </Link>
+          . Your team assignment appears after roster release.
           {event.rosters_release_at && (
             <> Roster release: {dateTime(event.rosters_release_at)}.</>
           )}
@@ -52,7 +55,13 @@ export function EventNotice({ data }: { data: Bootstrap }) {
     </>
   );
 }
-export function Lobby({ data }: { data: Bootstrap }) {
+export function Lobby({
+  data,
+  onRefresh,
+}: {
+  data: Bootstrap;
+  onRefresh: () => Promise<void>;
+}) {
   const solved = data.rooms.reduce((a, r) => a + r.progress.solved, 0),
     total = data.rooms.reduce((a, r) => a + r.progress.total, 0);
   return (
@@ -91,6 +100,7 @@ export function Lobby({ data }: { data: Bootstrap }) {
           )}
         </div>
       </section>
+      <ParticipantOnboarding viewer={data.viewer} onChanged={onRefresh} />
       <EventNotice data={data} />
       <div className="section-heading">
         <h2>Choose your room</h2>

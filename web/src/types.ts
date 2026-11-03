@@ -87,14 +87,20 @@ export interface Team {
   name: string;
   user_ids: number[];
   excluded: boolean;
+  name_locked: boolean;
+  ready_count: number;
 }
 export interface Participant {
   id: number;
   name: string;
   email: string;
   team_id: number | null;
+  ready_at: string | null;
+  late: boolean;
+  banned: boolean;
 }
 export interface AdminState {
+  onboarding: AttendanceState;
   demo: DemoContentState;
   event: QuestEvent;
   rooms: Room[];
@@ -140,4 +146,38 @@ declare global {
   interface Window {
     QUEST_INIT?: { csrfNonce?: string; viewer?: Viewer };
   }
+}
+
+export type OnboardingPhase = "check_in" | "closed" | "naming" | "finalized";
+export interface Onboarding {
+  phase: OnboardingPhase;
+  team_size: number;
+  ready_at: string | null;
+  late: boolean;
+  roster_released: boolean;
+  team: {
+    id: number;
+    name: string;
+    name_locked: boolean;
+    members: { id: number; name: string; ready_at: string | null }[];
+  } | null;
+  can_ready: boolean;
+  can_name: boolean;
+}
+export interface AttendanceState {
+  phase: OnboardingPhase;
+  team_size: number;
+  ready_count: number;
+  pending_count: number;
+  unassigned_ready_count: number;
+  unnamed_count: number;
+  can_start: boolean;
+  start_reason: string | null;
+}
+export interface AttendancePlan {
+  fingerprint: string;
+  groups: { team_id: number | null; name: string; user_ids: number[] }[];
+  moves: { user_id: number; from_team_id: number | null; to_group: number }[];
+  unassigned_user_ids: number[];
+  warnings: string[];
 }

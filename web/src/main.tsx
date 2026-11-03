@@ -100,7 +100,7 @@ function App() {
               </Notice>
             )}
             {path === "/quest" || path === "/quest/" ? (
-              <Lobby data={data} />
+              <Lobby data={data} onRefresh={bootstrap.refresh} />
             ) : path.startsWith("/quest/rooms/") ? (
               <RoomPage
                 slug={decode(

@@ -2,14 +2,14 @@ import { useState, type FormEvent } from "react";
 import { dateTime, request } from "./api";
 import { useResource } from "./hooks";
 import { DemoControls } from "./demo";
+import { Attendance } from "./attendance";
 import type {
   AdminState,
+  AttendanceState,
   DemoContentState,
-  Allocation,
   Projector,
   QuestEvent,
   Room,
-  Team,
 } from "./types";
 import { Arrow, Confirm, Empty, Markdown, Notice } from "./ui";
 const tabs = [
@@ -115,6 +115,7 @@ export function Admin() {
           <EventControls
             event={data.event}
             demo={data.demo}
+            onboarding={data.onboarding}
             busy={busy}
             mutate={mutate}
             execute={execute}
@@ -122,12 +123,7 @@ export function Admin() {
         ) : tab === "Rooms" ? (
           <RoomsControls data={data} busy={busy} execute={execute} />
         ) : tab === "Teams" ? (
-          <TeamsControls
-            data={data}
-            busy={busy}
-            mutate={mutate}
-            execute={execute}
-          />
+          <Attendance data={data} busy={busy} mutate={mutate} />
         ) : tab === "Awards" ? (
           <AwardControls data={data} busy={busy} execute={execute} />
         ) : tab === "Projector" ? (
@@ -154,12 +150,14 @@ type Execute = (
 function EventControls({
   event,
   demo,
+  onboarding,
   busy,
   mutate,
   execute,
 }: {
   event: QuestEvent;
   demo: DemoContentState;
+  onboarding: AttendanceState;
   busy: boolean;
   mutate: Mutation;
   execute: Execute;
@@ -271,7 +269,8 @@ function EventControls({
               description={action.description}
               disabled={
                 busy ||
-                (action.action === "start" && demo.active) ||
+                (action.action === "start" &&
+                  (demo.active || !onboarding?.can_start)) ||
                 (["reopen", "unpublish"].includes(action.action) &&
                   !reason.trim())
               }
@@ -292,6 +291,12 @@ function EventControls({
             />
           ))}
         </div>
+        {draft && !onboarding?.can_start && (
+          <p className="attendance-blocker">
+            {onboarding?.start_reason ||
+              "Attendance status is not available. Refresh organizer controls before starting."}
+          </p>
+        )}
       </section>
       <DemoControls
         state={demo}
@@ -681,308 +686,6 @@ function RoomForm({
         </button>
       </form>
     </section>
-  );
-}
-function TeamsControls({
-  data,
-  busy,
-  mutate,
-  execute,
-}: {
-  data: AdminState;
-  busy: boolean;
-  mutate: Mutation;
-  execute: Execute;
-}) {
-  const [allocation, setAllocation] = useState<Allocation | null>(null),
-    [previewError, setPreviewError] = useState(""),
-    [previewBusy, setPreviewBusy] = useState(false),
-    [size, setSize] = useState(4),
-    [query, setQuery] = useState("");
-  const draft = data.event.status === "draft";
-  const unassigned = data.participants.filter((p) => !p.team_id);
-  return (
-    <>
-      {draft && (
-        <section className="admin-panel">
-          <h2>Balanced team allocation</h2>
-          <p>
-            Preview a random assignment of eligible, unassigned participants.
-            Existing teams are preserved.
-          </p>
-          <div className="allocation-controls">
-            <label className="field">
-              <span>People per team</span>
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={size}
-                onChange={(e) => {
-                  setSize(Number(e.target.value));
-                  setAllocation(null);
-                }}
-              />
-            </label>
-            <button
-              className="button secondary"
-              disabled={
-                busy ||
-                previewBusy ||
-                size < 1 ||
-                size > 50 ||
-                !Number.isInteger(size)
-              }
-              onClick={async () => {
-                setPreviewBusy(true);
-                setPreviewError("");
-                try {
-                  setAllocation(
-                    await request<Allocation>("/admin/teams/allocate", "POST", {
-                      team_size: size,
-                      preview: true,
-                    }),
-                  );
-                } catch (e) {
-                  setPreviewError((e as Error).message);
-                } finally {
-                  setPreviewBusy(false);
-                }
-              }}
-            >
-              {previewBusy ? "Preparing…" : "Preview allocation"}
-            </button>
-            <span className="meta">
-              {unassigned.length} unassigned participant
-              {unassigned.length === 1 ? "" : "s"}
-            </span>
-          </div>
-          {previewError && <Notice tone="error">{previewError}</Notice>}
-          {allocation && (
-            <>
-              <div className="allocation-preview">
-                {allocation.groups.map((group, index) => (
-                  <div key={index}>
-                    <label className="field">
-                      <span>Team {index + 1} name</span>
-                      <input
-                        value={group.name}
-                        required
-                        onChange={(e) =>
-                          setAllocation({
-                            ...allocation,
-                            groups: allocation.groups.map((g, i) =>
-                              i === index ? { ...g, name: e.target.value } : g,
-                            ),
-                          })
-                        }
-                      />
-                    </label>
-                    <p>
-                      {group.user_ids
-                        .map(
-                          (id) =>
-                            data.participants.find((p) => p.id === id)?.name ||
-                            `User ${id}`,
-                        )
-                        .join(", ")}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              {allocation.groups.length ? (
-                <Confirm
-                  label="Commit team allocation"
-                  description={`Create ${allocation.groups.length} teams and assign the previewed participants. The server will check that the eligible population has not changed.`}
-                  disabled={
-                    busy || allocation.groups.some((g) => !g.name.trim())
-                  }
-                  onConfirm={async () => {
-                    await mutate(
-                      "/admin/teams/allocate",
-                      "POST",
-                      { preview: false, groups: allocation.groups },
-                      "Team allocation saved",
-                    );
-                    setAllocation(null);
-                  }}
-                />
-              ) : (
-                <p>No eligible participants are waiting for allocation</p>
-              )}
-            </>
-          )}
-        </section>
-      )}
-      <div className="section-heading">
-        <div>
-          <h2>Teams and membership</h2>
-          <p>
-            {draft
-              ? "Rename teams and adjust membership before the event starts."
-              : data.event.status === "published"
-                ? "Published results are locked. Unpublish explicitly before changing prize eligibility."
-                : "Team names and membership are fixed. Prize exclusions remain editable with an organizer reason until publication."}
-          </p>
-        </div>
-        <label className="search-label">
-          <span className="sr-only">Search teams</span>
-          <input
-            type="search"
-            placeholder="Search teams"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </label>
-      </div>
-      {!data.teams.length ? (
-        <Empty title="No teams yet">
-          Allocate registered participants in draft or manage teams in{" "}
-          <a href="/admin/teams">native CTFd administration</a>.
-        </Empty>
-      ) : (
-        <div className="team-editor-list">
-          {data.teams
-            .filter((t) => t.name.toLowerCase().includes(query.toLowerCase()))
-            .map((team) => (
-              <TeamForm
-                key={team.id}
-                team={team}
-                data={data}
-                busy={busy}
-                execute={execute}
-              />
-            ))}
-        </div>
-      )}
-    </>
-  );
-}
-function TeamForm({
-  team,
-  data,
-  busy,
-  execute,
-}: {
-  team: Team;
-  data: AdminState;
-  busy: boolean;
-  execute: Execute;
-}) {
-  const [excluded, setExcluded] = useState(team.excluded),
-    [members, setMembers] = useState(team.user_ids.map(String)),
-    [name, setName] = useState(team.name);
-  const draft = data.event.status === "draft";
-  const published = data.event.status === "published";
-  const membersChanged =
-    members.length !== team.user_ids.length ||
-    members.some((id) => !team.user_ids.includes(Number(id)));
-  const changed =
-    (draft && (name !== team.name || membersChanged)) ||
-    excluded !== team.excluded;
-  return (
-    <details className="team-editor">
-      <summary>
-        <span>{team.name}</span>
-        <span className="meta">
-          {team.user_ids.length} members
-          {team.excluded ? " · Excluded from awards" : ""}
-        </span>
-      </summary>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const f = new FormData(e.currentTarget);
-          execute(
-            `/admin/teams/${team.id}`,
-            "PATCH",
-            {
-              ...(draft && name !== team.name ? { name } : {}),
-              ...(excluded !== team.excluded
-                ? { excluded, reason: text(f, "reason") }
-                : {}),
-              ...(draft && membersChanged
-                ? { user_ids: members.map(Number) }
-                : {}),
-            },
-            "Team saved",
-          );
-        }}
-      >
-        <div className="form-grid">
-          <label className="field">
-            <span>Team name</span>
-            <input
-              name="name"
-              required
-              maxLength={128}
-              disabled={!draft || busy}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            {!draft && (
-              <small>Team names are fixed after the event opens</small>
-            )}
-          </label>
-          <label className="checkbox-field">
-            <input
-              type="checkbox"
-              checked={excluded}
-              disabled={published || busy}
-              onChange={(e) => setExcluded(e.target.checked)}
-            />
-            Exclude from prizes and public standings
-          </label>
-        </div>
-        {draft ? (
-          <label className="field">
-            <span>Team members</span>
-            <select
-              multiple
-              value={members}
-              size={Math.min(8, Math.max(3, data.participants.length))}
-              onChange={(e) =>
-                setMembers(Array.from(e.target.selectedOptions, (o) => o.value))
-              }
-            >
-              {data.participants
-                .filter((p) => !p.team_id || p.team_id === team.id)
-                .map((p) => (
-                  <option value={p.id} key={p.id}>
-                    {p.name} · {p.email}
-                  </option>
-                ))}
-            </select>
-            <small>
-              Use Command or Control to select multiple people. Assigned members
-              of other teams are unavailable.
-            </small>
-          </label>
-        ) : (
-          <p>
-            {team.user_ids
-              .map(
-                (id) =>
-                  data.participants.find((p) => p.id === id)?.name ||
-                  `User ${id}`,
-              )
-              .join(", ")}
-          </p>
-        )}
-        <label className="field">
-          <span>Reason for prize eligibility change</span>
-          <input
-            name="reason"
-            required={excluded !== team.excluded}
-            disabled={published || busy}
-            placeholder="Required when changing exclusion"
-          />
-        </label>
-        <button className="button" disabled={busy || published || !changed}>
-          Save team
-        </button>
-      </form>
-    </details>
   );
 }
 function AwardControls({
