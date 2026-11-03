@@ -1,0 +1,41 @@
+"""Open Tech Quest for pinned CTFd 3.8.9; no core fork or seeded challenges."""
+from flask import Blueprint, render_template, session
+from sqlalchemy.exc import IntegrityError
+from CTFd.models import Solves, db
+from CTFd.plugins import register_admin_plugin_menu_bar, register_plugin_stylesheet
+from CTFd.plugins.migrations import upgrade
+from CTFd.utils import get_config, set_config
+from .models import QuestEvent, QuestRoom
+
+
+def load(app):
+    upgrade(plugin_name="open_tech_quest")
+    if get_config("user_mode") != "teams":
+        if Solves.query.filter_by(team_id=None).first():
+            raise RuntimeError("Open Tech Quest requires teams; individual solves exist. Migrate ownership explicitly before enabling.")
+        set_config("user_mode", "teams")
+    if QuestEvent.query.get(1) is None:
+        db.session.add(QuestEvent(id=1))
+        for position, (slug, name) in enumerate((("openshift", "OpenShift"), ("ansible", "Ansible"), ("rhel", "RHEL"), ("security", "Security"), ("ai", "AI"))):
+            db.session.add(QuestRoom(slug=slug, name=name, position=position,
+                                    theme={"accent": "#00a6b2", "layout": slug, "logo_url": None, "hero_url": None}))
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            if QuestEvent.query.get(1) is None:
+                raise
+    from .api import api, viewer
+    from .guards import install_guards
+    shell = Blueprint("quest", __name__, template_folder="templates", static_folder="assets", static_url_path="/plugins/open_tech_quest/assets")
+
+    @shell.route("/quest")
+    @shell.route("/quest/<path:path>")
+    def index(path=None):
+        return render_template("quest.html", init={"csrfNonce": session.get("nonce"), "user": viewer()})
+
+    app.register_blueprint(shell)
+    app.register_blueprint(api, url_prefix="/api/v1/quest")
+    install_guards(app)
+    register_plugin_stylesheet("/plugins/open_tech_quest/assets/app/native-auth.css")
+    register_admin_plugin_menu_bar("Open Tech Quest", "/quest/admin")
