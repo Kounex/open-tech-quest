@@ -8,8 +8,8 @@ maximum team size is five, persisted and editable before final allocation.
 Each person confirms attendance with “I'm ready to quest”; this never starts any
 competition clock. Teammates share native team progress on their own devices.
 
-Onboarding phases are `check_in`, `closed`, `naming`, `finalized`. Initially check-in
-is open. An organizer closes it, previews attendance optimization, and explicitly
+Onboarding phases are `check_in`, `closed`, `naming`, `finalized`. Initially team preparation
+is open while attendance capture is off; see [attendance-window.md](attendance-window.md). An organizer closes it, previews attendance optimization, and explicitly
 applies the reviewed plan. Preview includes only ready, eligible participants,
 drops no-show assignments without deleting accounts, preserves full groups where
 possible and minimizes moves. Capacity is hard; 80% minimum is soft. Use the
@@ -31,7 +31,8 @@ Existing live/closed events migrate without changing their eligibility or clocks
 Existing draft accounts/teams are preserved on upgrade; no fake users are seeded.
 
 Ready is personal, timestamped, idempotent and survives membership moves. It can
-also be recorded after check-in closes, appearing as a late arrival; before apply
+also be recorded during an explicitly opened late attendance window, appearing
+as a late arrival; before apply
 this invalidates any older preview. After apply, unassigned late arrivals appear
 in an organizer queue and may be placed manually with a reason, before finalizing,
 within capacity. If all groups are full, a reasoned create-late-team action
@@ -55,7 +56,8 @@ never teammates' email addresses. Organizers retain email visibility.
 All existing envelopes/authentication/CSRF rules apply. New fields are additive.
 
 - GET `/onboarding` (authenticated participant):
-  `{phase, team_size, ready_at, late, roster_released, team, can_ready, can_name}`.
+  `{phase, team_size, ready_at, late, roster_released, team, can_ready, can_name,
+  attendance}`. The attendance window must be open for a new confirmation.
   `team` is null before release/unassigned, otherwise
   `{id,name,name_locked,members:[{id,name,ready_at}]}`. Never expose other teams or
   emails. `can_name` requires naming phase, ready current member, unlocked team.
@@ -63,7 +65,7 @@ All existing envelopes/authentication/CSRF rules apply. New fields are additive.
   returns the same participant shape. Guest/admin/banned cannot check in.
 - POST `/onboarding/name`: `{name, confirm:true}`, claim once, returns own shape.
 - GET admin state gains `onboarding:{phase,team_size,ready_count,pending_count,
-  unassigned_ready_count,unnamed_count}`. Participants gain `ready_at`, `late`,
+  unassigned_ready_count,unnamed_count,attendance}`. Participants gain `ready_at`, `late`,
   `banned`; teams gain `name_locked`, `ready_count` (all existing fields retained).
 - PATCH `/admin/onboarding`: `{team_size}` persisted before naming/finalized.
 - POST `/admin/onboarding/action`: `{action:close_checkin|reopen_checkin|finalize}`.
@@ -71,11 +73,16 @@ All existing envelopes/authentication/CSRF rules apply. New fields are additive.
   capacity-limited groups of ready unassigned late arrivals.
   Finalize checks ready eligible assigned members, capacity, names, no unresolved ready
   queue. Non-ready accounts remain outside teams after optimization.
+- PATCH `/admin/attendance`: `{enabled:boolean}`; explicitly control capture
+  independently of registration and team preparation. Closing team check-in also
+  closes capture; reopening team preparation does not open capture.
 - POST `/admin/onboarding/optimize`: `{preview:true}` =>
   `{fingerprint,groups:[{team_id:number|null,name,user_ids}],moves:[{user_id,
   from_team_id:number|null,to_group:number}],unassigned_user_ids,warnings}`.
   Apply `{preview:false,fingerprint}`; server recomputes exact deterministic plan
   under the event write lock and verifies the fingerprint, then applies once.
+  Capture must be closed for preview/apply and finalization; opening and closing
+  it invalidates a previously reviewed plan.
 - Existing POST `/admin/teams/allocate` retains preview/groups contract for initial
   random allocation during check-in only; configured capacity is authoritative.
 - Existing PATCH `/admin/teams/<id>` accepts reasoned corrections. During naming,

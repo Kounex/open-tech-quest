@@ -55,6 +55,9 @@ fingerprint so any intervening open/close invalidates an older review.
 Migration must handle fresh installation: quest_0004 creates tables from current
 ORM metadata, so quest_0005 must introspect and add only missing columns. Preserve
 existing times, solves, teams, accounts and readiness during actual 0.1.10 upgrade.
+Pinned CTFd skips Alembic for SQLite and only calls create_all; run the same
+introspective schema step under BEGIN IMMEDIATE before SQLite ORM reads so old
+columns are upgraded and simultaneous worker startups serialize.
 
 ## API seam
 

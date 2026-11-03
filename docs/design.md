@@ -99,6 +99,11 @@ Organizers close check-in, review a deterministic attendance optimization, apply
 it, then let any member claim the final unique team name once. Finalization locks
 the roster before competition start. Late arrivals remain visible for reasoned
 manual placement before finalization. Readiness never starts a competition clock.
+Attendance capture is a separate, default-off organizer window. Signed-in
+participants are prompted automatically when it opens; early registration does
+not record presence. New confirmation is rejected while capture is closed.
+See [attendance-window.md](attendance-window.md) for prompting, migration and
+lifecycle rules.
 See [onboarding.md](onboarding.md) for the complete lifecycle, additive API seam,
 privacy and stale-preview/concurrency guarantees. Native self-service team routes
 and native administrator writes cannot bypass the roster lifecycle.
