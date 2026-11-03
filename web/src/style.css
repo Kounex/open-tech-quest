@@ -778,9 +778,48 @@ svg {
   width: 48px;
   height: 48px;
 }
-.room-intro .lede {
-  font-size: 18px;
+.room-description {
+  min-width: 0;
   margin-bottom: 24px;
+}
+.room-description .prose {
+  font-size: 18px;
+  color: var(--muted);
+}
+.room-description .prose h1 {
+  font-size: 28px;
+  margin-top: 24px;
+}
+.room-description .prose :is(h1, h2, h3, h4, h5, h6, strong) {
+  color: var(--ink);
+}
+.room-description .prose > :first-child {
+  margin-top: 0;
+}
+.room-description .prose :is(ul, ol) {
+  padding-left: 24px;
+  margin-bottom: 16px;
+}
+.room-description .prose blockquote {
+  border-left: 4px solid var(--line);
+  padding-left: 20px;
+  margin: 20px 0;
+}
+.room-description .prose table {
+  display: block;
+  overflow-x: auto;
+}
+.introduction-preview {
+  margin: 16px 0 24px;
+}
+.introduction-preview summary {
+  cursor: pointer;
+  font-size: 14px;
+}
+.introduction-preview .room-description {
+  border: 1px solid var(--line);
+  padding: 24px;
+  margin: 16px 0 0;
 }
 .room-facts {
   display: flex;
@@ -2003,7 +2042,7 @@ fieldset {
   .room-intro h1 {
     font-size: 36px;
   }
-  .room-intro .lede {
+  .room-intro .room-description .prose {
     font-size: 17px;
   }
   .room-intro .room-art {

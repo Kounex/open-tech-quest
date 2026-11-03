@@ -9,7 +9,7 @@ import type {
   Room,
   Team,
 } from "./types";
-import { Arrow, Confirm, Empty, Notice } from "./ui";
+import { Arrow, Confirm, Empty, Markdown, Notice } from "./ui";
 const tabs = [
   "Event",
   "Rooms",
@@ -444,6 +444,7 @@ function RoomForm({
 }) {
   const [ids, setIds] = useState(room.steps.map((s) => s.id));
   const [selected, setSelected] = useState("");
+  const [introduction, setIntroduction] = useState(room.description);
   const draft = data.event.status === "draft";
   function move(index: number, delta: number) {
     setIds((current) => {
@@ -488,13 +489,30 @@ function RoomForm({
           </label>
         </div>
         <label className="field">
-          <span>Room introduction</span>
+          <span>Room introduction (Markdown)</span>
           <textarea
             name="description"
-            rows={3}
-            defaultValue={room.description}
+            rows={8}
+            maxLength={10000}
+            value={introduction}
+            onChange={(e) => setIntroduction(e.target.value)}
+            aria-describedby={`introduction-help-${room.id}`}
           />
+          <small id={`introduction-help-${room.id}`}>
+            Use ## headings, **bold**, *italic*, lists, [links](https://…), and
+            `inline code`. The subtitle stays plain text on the room card.
+          </small>
         </label>
+        <details className="introduction-preview">
+          <summary>Preview introduction</summary>
+          <div className="room-description">
+            {introduction.trim() ? (
+              <Markdown source={introduction} />
+            ) : (
+              <p className="meta">Write an introduction to preview it here.</p>
+            )}
+          </div>
+        </details>
         <details className="asset-fields">
           <summary>Theme and artwork</summary>
           <div className="form-grid">

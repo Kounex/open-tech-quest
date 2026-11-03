@@ -14,6 +14,10 @@
 4. Add room logos/artwork using theme asset URLs. Selected local web assets
    can be packaged under `branding/`; source/provenance belongs in
    `branding/sources.json`. Keep raw internal catalogue archives private.
+   Room introductions support Markdown: headings, emphasis, lists, links,
+   images, tables and code blocks. Expand **Preview introduction** to check
+   formatting before **Save room**. Preview and participant views use the
+   same sanitized renderer. Use the plain-text subtitle for the lobby card.
 5. Configure the event name, scheduled start/end, roster-release time and
    prize clock origins. The UI uses the organizer's browser local timezone;
    persistence and API timestamps use UTC. Leaving roster release empty

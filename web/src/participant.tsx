@@ -113,11 +113,7 @@ export function Lobby({ data }: { data: Bootstrap }) {
                 <h2>{room.name}</h2>
                 <Arrow />
               </div>
-              <p>
-                {room.subtitle ||
-                  room.description ||
-                  "Explore the challenges with your team"}
-              </p>
+              <p>{room.subtitle || "Explore the challenges with your team"}</p>
               <div className="room-card-progress">
                 <span>
                   {room.progress.total
@@ -257,10 +253,14 @@ export function RoomPage({
             <p className="eyebrow">{room.subtitle || "Your next topic"}</p>
           </div>
           <h1>The {room.name} room</h1>
-          <p className="lede">
-            {room.description ||
-              "Work through the challenges in order. Every teammate shares the path."}
-          </p>
+          <div className="room-description">
+            <Markdown
+              source={
+                room.description ||
+                "Work through the challenges in order. Every teammate shares the path."
+              }
+            />
+          </div>
           <div className="room-facts">
             <strong>{data.viewer.team_name || "Shared team progress"}</strong>
             <span>
