@@ -521,3 +521,301 @@ class QuestIntegration(unittest.TestCase):
         self.assertEqual(self.admin.get(PREFIX + "/admin/state").json["data"]["event"]["status"], "draft")
         self.configure([1])
         self.action("start")
+
+    def load_demo(self):
+        self.configure([])
+        result = self.post(self.admin, PREFIX + "/admin/demo", {"action": "load"})
+        self.assertEqual(result.status_code, 200, result.get_data(as_text=True))
+        return result.json["data"]
+
+    def test_demo_admin_csrf_mappings_and_phase_guards(self):
+        endpoint = PREFIX + "/admin/demo"
+        with self.guest.session_transaction() as session:
+            session["nonce"] = "quest-test-csrf"
+        self.assertEqual(self.post(self.guest, endpoint, {"action": "load"}).status_code, 401)
+        self.assertEqual(self.post(self.alice, endpoint, {"action": "load"}).status_code, 403)
+        self.assertEqual(self.admin.post(endpoint, json={"action": "load"}).status_code, 403)
+        self.assertEqual(self.post(self.admin, endpoint, {"action": "unknown"}).status_code, 400)
+        state = self.admin.get(PREFIX + "/admin/state").json["data"]["demo"]
+        self.assertFalse(state["can_load"])
+        self.assertIn("mapped challenges", state["reason"])
+        self.assertEqual(self.post(self.admin, endpoint, {"action": "load"}).status_code, 409)
+        self.action("start")
+        result = self.post(self.admin, endpoint, {"action": "load"})
+        self.assertEqual(result.status_code, 409)
+        self.assertIn("draft", result.json["error"])
+
+    def test_demo_load_native_chains_preview_flags_and_no_participants(self):
+        from CTFd.plugins.open_tech_quest.models import QuestDemoBatch, QuestDemoChallenge
+        state = self.load_demo()
+        self.assertEqual(state, {"active": True, "challenge_count": 25, "can_load": False, "can_unload": True, "reason": None})
+        with self.app.app_context():
+            self.assertEqual(Users.query.count(), 4)
+            self.assertEqual(Teams.query.count(), 2)
+            self.assertEqual(QuestStart.query.count(), 0)
+            self.assertEqual(Solves.query.count(), 0)
+            self.assertEqual(Challenges.query.count(), 28)
+            self.assertEqual(QuestDemoBatch.query.count(), 1)
+            self.assertEqual(QuestDemoChallenge.query.count(), 25)
+            self.assertIsNotNone(Challenges.query.get(3))
+            previews = []
+            for room in QuestRoom.query.all():
+                self.assertIn("### Your objectives", room.description)
+                self.assertIn("demo{", room.description)
+                steps = QuestStep.query.filter_by(room_id=room.id).order_by(QuestStep.position).all()
+                self.assertEqual(len(steps), 5)
+                ids = [step.challenge_id for step in steps]
+                for position, challenge_id in enumerate(ids):
+                    challenge = Challenges.query.get(challenge_id)
+                    self.assertEqual(challenge.requirements["prerequisites"], ids[:position])
+                    self.assertEqual(challenge.next_id, ids[position + 1] if position < 4 else None)
+                    self.assertIn("### Example artifact", challenge.description)
+                    self.assertEqual(challenge.type, "standard")
+                    hint = Hints.query.filter_by(challenge_id=challenge_id).one()
+                    self.assertEqual(hint.cost, 0)
+                    flag = Flags.query.filter_by(challenge_id=challenge_id).one().content
+                    self.assertTrue(flag.startswith("demo{"))
+                    self.assertIn(flag, hint.content)
+                    previews.append((challenge_id, flag, hint.id))
+        for challenge_id, flag, hint_id in previews:
+            response = self.post(self.admin, "/api/v1/challenges/attempt?preview=true", {"challenge_id": challenge_id, "submission": flag})
+            self.assertEqual(response.json["data"]["status"], "correct")
+            self.assertIn(flag, self.admin.get(f"/api/v1/hints/{hint_id}?preview=true").json["data"]["content"])
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/demo", {"action": "load"}).status_code, 409)
+        with self.app.app_context():
+            self.assertEqual(Challenges.query.count(), 28)
+            self.assertEqual(Solves.query.count(), 0)
+            self.assertEqual(QuestAudit.query.filter_by(action="demo.load").count(), 1)
+
+    def test_demo_unload_restores_original_copy_retains_edits_and_people(self):
+        for slug in ("openshift", "ansible", "rhel", "security", "ai"):
+            self.assertEqual(self.post(self.admin, PREFIX + f"/admin/rooms/{slug}", {"subtitle": f"Original {slug}", "description": f"## Original {slug} introduction"}, "PATCH").status_code, 200)
+        self.load_demo()
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/rooms/ansible", {"description": "## Organizer edit\n\nKeep this scenario."}, "PATCH").status_code, 200)
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/rooms/rhel", {"subtitle": "Organizer topic update"}, "PATCH").status_code, 200)
+        result = self.post(self.admin, PREFIX + "/admin/demo", {"action": "unload"})
+        self.assertEqual(result.status_code, 200, result.get_data(as_text=True))
+        self.assertFalse(result.json["data"]["active"])
+        self.assertTrue(result.json["data"]["can_load"])
+        with self.app.app_context():
+            self.assertEqual(Challenges.query.count(), 3)
+            self.assertEqual(Flags.query.count(), 3)
+            self.assertEqual(Hints.query.count(), 1)
+            self.assertEqual(Users.query.count(), 4)
+            self.assertEqual(Teams.query.count(), 2)
+            self.assertEqual(QuestStep.query.count(), 0)
+            for room in QuestRoom.query.all():
+                expected = "## Organizer edit\n\nKeep this scenario." if room.slug == "ansible" else f"## Original {room.slug} introduction"
+                self.assertEqual(room.description, expected)
+                self.assertEqual(room.subtitle, "Organizer topic update" if room.slug == "rhel" else f"Original {room.slug}")
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/demo", {"action": "unload"}).status_code, 409)
+
+    def test_demo_unload_repairs_later_real_steps_and_preserves_unmapped_content(self):
+        self.load_demo()
+        room = self.admin.get(PREFIX + "/rooms/openshift").json["data"]
+        demo_ids = [step["id"] for step in room["steps"]]
+        self.configure([demo_ids[0], 1, demo_ids[1], 2])
+        result = self.post(self.admin, PREFIX + "/admin/demo", {"action": "unload"})
+        self.assertEqual(result.status_code, 200, result.get_data(as_text=True))
+        self.assertFalse(result.json["data"]["can_load"])
+        self.assertIn("mapped challenges", result.json["data"]["reason"])
+        with self.app.app_context():
+            self.assertEqual(Challenges.query.count(), 3)
+            self.assertEqual(Challenges.query.get(1).description, "Private instructions 1")
+            self.assertEqual(Challenges.query.get(1).requirements["prerequisites"], [])
+            self.assertEqual(Challenges.query.get(1).next_id, 2)
+            self.assertEqual(Challenges.query.get(2).requirements["prerequisites"], [1])
+            self.assertIsNone(Challenges.query.get(2).next_id)
+            self.assertEqual([step.challenge_id for step in QuestStep.query.order_by(QuestStep.position).all()], [1, 2])
+            self.assertEqual(Flags.query.filter_by(challenge_id=3).one().content, "fixture-answer-3")
+
+    def test_demo_unload_refuses_submissions_and_reports_disabled_reason(self):
+        from CTFd.models import Fails
+        self.load_demo()
+        with self.app.app_context():
+            demo_id = QuestStep.query.first().challenge_id
+            db.session.add(Fails(challenge_id=demo_id, user_id=2, team_id=self.team_id, provided="public demo attempt"))
+            db.session.add(Solves(challenge_id=demo_id, user_id=2, team_id=self.team_id, provided="public dummy answer"))
+            db.session.commit()
+        state = self.admin.get(PREFIX + "/admin/state").json["data"]["demo"]
+        self.assertFalse(state["can_unload"])
+        self.assertIn("submissions", state["reason"])
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/demo", {"action": "unload"}).status_code, 409)
+        with self.app.app_context():
+            self.assertEqual(Challenges.query.count(), 28)
+            self.assertEqual(Fails.query.count(), 1)
+            self.assertEqual(Solves.query.count(), 1)
+
+    def test_demo_unload_refuses_room_starts_and_competition_start(self):
+        self.load_demo()
+        response = self.post(self.admin, PREFIX + "/admin/event/action", {"action": "start"})
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("Remove demo content", response.json["error"])
+        with self.app.app_context():
+            self.assertEqual(QuestEvent.query.get(1).status, "draft")
+            db.session.add(QuestStart(team_id=self.team_id, room_id=QuestRoom.query.first().id))
+            db.session.commit()
+        state = self.admin.get(PREFIX + "/admin/state").json["data"]["demo"]
+        self.assertFalse(state["can_unload"])
+        self.assertIn("starts", state["reason"])
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/demo", {"action": "unload"}).status_code, 409)
+
+    def test_demo_unload_refuses_unrelated_native_dependencies(self):
+        self.load_demo()
+        with self.app.app_context():
+            demo_id = QuestStep.query.first().challenge_id
+            Challenges.query.get(3).requirements = {"prerequisites": [demo_id]}
+            db.session.commit()
+        state = self.admin.get(PREFIX + "/admin/state").json["data"]["demo"]
+        self.assertFalse(state["can_unload"])
+        self.assertIn("depends on demo", state["reason"])
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/demo", {"action": "unload"}).status_code, 409)
+        with self.app.app_context():
+            self.assertEqual(Challenges.query.get(3).requirements["prerequisites"], [demo_id])
+            self.assertEqual(Challenges.query.count(), 28)
+
+    def test_demo_does_not_claim_real_challenge_reusing_deleted_id(self):
+        self.load_demo()
+        with self.app.app_context():
+            room = QuestRoom.query.filter_by(slug="openshift").one()
+            ids = [step.challenge_id for step in QuestStep.query.filter_by(room_id=room.id).order_by(QuestStep.position).all()]
+        self.configure(ids[:-1])
+        self.assertEqual(self.post(self.admin, f"/api/v1/challenges/{ids[-1]}", {}, "DELETE").status_code, 200)
+        with self.app.app_context():
+            db.session.add(Challenges(id=ids[-1], name="Real replacement", description="Real organizer content", type="standard", state="visible", value=100))
+            db.session.commit()
+        result = self.post(self.admin, PREFIX + "/admin/demo", {"action": "unload"})
+        self.assertEqual(result.status_code, 200, result.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Challenges.query.get(ids[-1]).description, "Real organizer content")
+            self.assertEqual(Challenges.query.count(), 4)
+
+    def test_demo_load_failure_rolls_back_every_created_row_and_room_copy(self):
+        from CTFd.plugins.open_tech_quest.demo import DemoConflict, challenge_content
+        from CTFd.plugins.open_tech_quest.models import QuestDemoBatch, QuestDemoChallenge
+        self.configure([])
+        count = 0
+        def fail_midway(slug, item):
+            nonlocal count
+            count += 1
+            if count == 7:
+                raise DemoConflict("Unable to complete demo setup; no content was saved")
+            return challenge_content(slug, item)
+        with patch("CTFd.plugins.open_tech_quest.demo.challenge_content", side_effect=fail_midway):
+            response = self.post(self.admin, PREFIX + "/admin/demo", {"action": "load"})
+        self.assertEqual(response.status_code, 409)
+        with self.app.app_context():
+            self.assertEqual(Challenges.query.count(), 3)
+            self.assertEqual(Flags.query.count(), 3)
+            self.assertEqual(Hints.query.count(), 1)
+            self.assertEqual(QuestStep.query.count(), 0)
+            self.assertEqual(QuestDemoBatch.query.count(), 0)
+            self.assertEqual(QuestDemoChallenge.query.count(), 0)
+            self.assertTrue(all(room.description == "" and room.subtitle == "" for room in QuestRoom.query.all()))
+
+    def test_demo_can_reload_after_unload_without_claiming_old_ids(self):
+        from CTFd.plugins.open_tech_quest.models import QuestDemoBatch
+        self.load_demo()
+        for action in ("unload", "load", "unload"):
+            response = self.post(self.admin, PREFIX + "/admin/demo", {"action": action})
+            self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Challenges.query.count(), 3)
+            self.assertEqual(QuestDemoBatch.query.count(), 2)
+            self.assertEqual(QuestDemoBatch.query.filter_by(active=True).count(), 0)
+
+    def test_demo_concurrent_load_creates_only_one_batch(self):
+        from CTFd.plugins.open_tech_quest.models import QuestDemoBatch
+        self.configure([])
+        def load_once(_):
+            return self.post(self.client(1), PREFIX + "/admin/demo", {"action": "load"})
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses = list(pool.map(load_once, range(2)))
+        self.assertEqual(sorted(response.status_code for response in responses), [200, 409])
+        with self.app.app_context():
+            self.assertEqual(QuestDemoBatch.query.filter_by(active=True).count(), 1)
+            self.assertEqual(Challenges.query.count(), 28)
+            self.assertEqual(QuestStep.query.count(), 25)
+
+    def test_demo_unload_serializes_native_delete_and_id_reuse_on_sqlite(self):
+        if not self.app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
+            self.skipTest("SQLite native ID reuse and writer serialization")
+        self.load_demo()
+        with self.app.app_context():
+            room = QuestRoom.query.filter_by(slug="ai").one()
+            ids = [step.challenge_id for step in QuestStep.query.filter_by(room_id=room.id).order_by(QuestStep.position).all()]
+        response = self.post(self.admin, PREFIX + "/admin/rooms/ai", {"challenge_ids": ids[:-1]}, "PATCH")
+        self.assertEqual(response.status_code, 200)
+        from CTFd.plugins.open_tech_quest.demo import owned_ids as original_owned_ids
+        entered, release = threading.Event(), threading.Event()
+        local = threading.local()
+        def gate(batch):
+            result = original_owned_ids(batch)
+            if getattr(local, "unloading", False):
+                local.calls = getattr(local, "calls", 0) + 1
+                if local.calls == 2:
+                    entered.set()
+                    if not release.wait(3):
+                        raise RuntimeError("Unload test gate was not released")
+            return result
+        def unload():
+            local.unloading = True
+            return self.post(self.client(1), PREFIX + "/admin/demo", {"action": "unload"})
+        def native_replace():
+            client = self.client(1)
+            deleted = self.post(client, f"/api/v1/challenges/{ids[-1]}", {}, "DELETE")
+            created = self.post(client, "/api/v1/challenges", {"name": "Real concurrent challenge", "description": "Real organizer content", "category": "Real", "value": 100, "state": "visible", "type": "standard"})
+            return deleted, created
+        with patch("CTFd.plugins.open_tech_quest.demo.owned_ids", side_effect=gate):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                pending_unload = pool.submit(unload)
+                self.assertTrue(entered.wait(3))
+                pending_native = pool.submit(native_replace)
+                time.sleep(0.1)
+                try:
+                    self.assertFalse(pending_native.done(), "Native writes must wait for the SQLite demo transaction")
+                finally:
+                    release.set()
+                result = pending_unload.result()
+                deleted, created = pending_native.result()
+        self.assertEqual(result.status_code, 200, result.get_data(as_text=True))
+        self.assertIn(deleted.status_code, (200, 404))
+        self.assertEqual(created.status_code, 200, created.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Challenges.query.get(created.json["data"]["id"]).description, "Real organizer content")
+
+    def test_demo_load_cannot_interleave_with_competition_start(self):
+        if not self.app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
+            self.skipTest("SQLite lifecycle writer serialization")
+        from CTFd.plugins.open_tech_quest.demo import active_batch as original_active_batch
+        self.configure([])
+        entered, release = threading.Event(), threading.Event()
+        local = threading.local()
+        def gate():
+            result = original_active_batch()
+            if getattr(local, "opening", False):
+                entered.set()
+                if not release.wait(3):
+                    raise RuntimeError("Event start gate was not released")
+            return result
+        def start_event():
+            local.opening = True
+            return self.post(self.client(1), PREFIX + "/admin/event/action", {"action": "start"})
+        def load_demo():
+            return self.post(self.client(1), PREFIX + "/admin/demo", {"action": "load"})
+        with patch("CTFd.plugins.open_tech_quest.demo.active_batch", side_effect=gate):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                pending_start = pool.submit(start_event)
+                self.assertTrue(entered.wait(3))
+                pending_load = pool.submit(load_demo)
+                time.sleep(0.1)
+                try:
+                    self.assertFalse(pending_load.done(), "Demo load must wait for the event lifecycle decision")
+                finally:
+                    release.set()
+                started, loaded = pending_start.result(), pending_load.result()
+        self.assertEqual(started.status_code, 409)
+        self.assertEqual(loaded.status_code, 200, loaded.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(QuestEvent.query.get(1).status, "draft")
+            self.assertIsNotNone(original_active_batch())

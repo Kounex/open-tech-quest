@@ -33,6 +33,12 @@ def event(lock=False):
         # see the population/history committed by the preceding lock holder.
         from CTFd.models import db
         db.session.rollback()
+        if db.engine.dialect.name == "sqlite":
+            # SQLite ignores FOR UPDATE. Its writer transaction must start
+            # before lifecycle/history reads so native mutations and demo
+            # actions cannot interleave with a competition start or cleanup.
+            from sqlalchemy import text
+            db.session.execute(text("BEGIN IMMEDIATE"))
     query = QuestEvent.query.filter_by(id=1)
     return query.populate_existing().with_for_update().one() if lock else query.one()
 

@@ -81,3 +81,25 @@ class QuestAudit(db.Model):
     action = db.Column(db.String(64), nullable=False)
     detail = db.Column(db.JSON, nullable=False)
     created_at = db.Column(UTCDateTime, nullable=False, default=datetime.utcnow)
+
+
+class QuestDemoBatch(db.Model):
+    """Exact ownership and reversible presentation values for an explicit demo."""
+    __tablename__ = "quest_demo_batches"
+    id = db.Column(db.Integer, primary_key=True)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    # Only one batch can own the active slot, including on SQLite where
+    # SELECT FOR UPDATE is unavailable. Removed batches release it to NULL.
+    active_slot = db.Column(db.Integer, unique=True, default=1)
+    challenge_ids = db.Column(db.JSON, nullable=False)
+    rooms = db.Column(db.JSON, nullable=False)
+    created_at = db.Column(UTCDateTime, nullable=False, default=datetime.utcnow)
+    removed_at = db.Column(UTCDateTime)
+
+
+class QuestDemoChallenge(db.Model):
+    """A deleted native challenge loses ownership, even if its ID is reused."""
+    __tablename__ = "quest_demo_challenges"
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.Integer, db.ForeignKey("quest_demo_batches.id", ondelete="CASCADE"), nullable=False)
+    challenge_id = db.Column(db.Integer, db.ForeignKey("challenges.id", ondelete="SET NULL"), unique=True)

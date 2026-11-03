@@ -20,6 +20,8 @@ from .models import (QuestEvent, QuestRoom, QuestStep, QuestStart, QuestPause,
 from .service import (event, event_data, now, iso, parse_time, released,
                       room_data, room_steps, standings, Projection)
 
+from . import demo
+
 api = Blueprint("quest_api", __name__)
 
 
@@ -224,7 +226,7 @@ def admin_state():
                     "teams": [team_data(t) for t in Teams.query.order_by(Teams.id).all()],
                     "participants": [{"id": u.id, "name": u.name, "email": u.email, "team_id": u.team_id} for u in Users.query.filter_by(type="user").order_by(Users.id).all()],
                     "audit": [{"id": a.id, "actor_id": a.actor_id, "action": a.action, "detail": a.detail, "created_at": iso(a.created_at)} for a in QuestAudit.query.order_by(QuestAudit.id.desc()).limit(200).all()],
-                    "standings": standings(), "projector": event().projector})
+                    "standings": standings(), "projector": event().projector, "demo": demo.status(event())})
 
 
 @api.route("/admin/event", methods=["PATCH"])
@@ -260,6 +262,8 @@ def event_action():
     action, at = data.get("action"), now()
     if action == "start":
         draft(e)
+        if demo.active_batch():
+            fail("Remove demo content before starting the competition; organizers can preview it while in draft.", 409)
         if QuestStep.query.first() is None:
             fail("Configure at least one room challenge before starting the event", 409)
         if e.start_at and e.start_at > at:
@@ -569,3 +573,21 @@ def export():
             room = next(r for r in data["rooms"] if r["id"] == p["room_id"])
             writer.writerow((room["slug"], team["id"], safe_name(team["name"]), p["rank"], p["solved"], p["total"], p["milestone_elapsed_ms"]))
     return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=quest-standings.csv"})
+
+
+@api.route("/admin/demo", methods=["POST"])
+@admin
+def manage_demo():
+    data, e = body(), event(lock=True)
+    action = data.get("action")
+    if action not in ("load", "unload"):
+        fail("Choose demo action load or unload")
+    try:
+        batch = demo.load(e) if action == "load" else demo.unload(e)
+    except demo.DemoConflict as exc:
+        fail(str(exc), 409)
+    audit("demo." + action, {"batch_id": batch.id, "challenge_ids": batch.challenge_ids})
+    db.session.commit()
+    clear_challenges()
+    clear_standings()
+    return success(demo.status(e))
