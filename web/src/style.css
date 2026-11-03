@@ -459,7 +459,7 @@ svg {
   grid-column: span 3;
 }
 .room-card .room-art {
-  height: 196px;
+  height: 244px;
   border-bottom: 1px solid var(--line);
 }
 .room-card-content {
@@ -533,194 +533,19 @@ svg {
   justify-content: center;
   overflow: hidden;
   min-width: 0;
-  padding: 32px;
-  background: #f0f0f4;
+  background: #f6f6f8;
   color: var(--indigo);
 }
 .room-hero-image {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
 }
 .room-intro .room-art {
-  min-height: 260px;
-  border-radius: 4px;
-}
-.cluster-art {
-  width: 100%;
-  max-width: 420px;
-}
-.cluster-label {
-  font-size: 14px;
-  margin-bottom: 24px;
-  border-left: 3px solid #c00;
-  padding-left: 12px;
-}
-.cluster-nodes {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 20px;
-}
-.cluster-nodes > span {
-  font-size: 14px;
-  border: 1px solid #95919f;
-  background: #fff;
-  padding: 16px 12px;
-  min-width: 72px;
-  text-align: center;
-}
-.cluster-nodes > i {
-  width: 20px;
-  height: 1px;
-  background: #95919f;
-  flex: 1;
-  max-width: 40px;
-}
-.cluster-base {
-  display: flex;
-  justify-content: space-between;
-  border-top: 2px solid #c00;
-  padding-top: 12px;
-  font-size: 12px;
-  color: var(--muted);
-  gap: 12px;
-}
-.playbook-art {
-  width: 100%;
-  max-width: 400px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 16px;
-}
-.code-comment {
-  font-size: 12px;
-  color: var(--muted);
-  grid-column: 1/-1;
-}
-.playbook-art code {
-  font-size: 14px;
-  line-height: 1.6;
-  white-space: pre;
-}
-.playbook-art code > span {
-  color: #b00000;
-}
-.playbook-result {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  align-self: end;
-  font-size: 12px;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-}
-.playbook-result > span {
-  display: inline-block;
-  height: 8px;
-  width: 8px;
-  border-radius: 50%;
-  background: var(--cyan);
-}
-.art-rhel {
-  background: #eae9ed;
-}
-.terminal-art {
-  width: 100%;
-  max-width: 400px;
-  background: #28252e;
-  color: #fafafa;
-  align-self: center;
-}
-.terminal-bar {
-  font-size: 12px;
-  border-bottom: 1px solid #5e5868;
-  padding: 12px 16px;
-  color: #ddd9e5;
-}
-.terminal-art code {
-  display: block;
-  font-size: 14px;
-  line-height: 1.8;
-  padding: 16px 20px;
-}
-.terminal-art code > span {
-  color: #86d6df;
-}
-.terminal-art code > b {
-  font-weight: 400;
-  color: #86d6df;
-}
-.terminal-foot {
-  font-size: 11px;
-  color: #d1cbd9;
-  padding: 0 20px 16px;
-}
-.trust-boundary {
-  border: 1px solid #8e8b98;
-  padding: 20px 28px;
-  position: relative;
-}
-.trust-label {
-  font-size: 12px;
-  position: absolute;
-  top: -12px;
-  background: #f0f0f4;
-  left: 20px;
-  padding: 4px 8px;
-}
-.security-art {
-  width: 100%;
-  max-width: 400px;
-}
-.security-inner {
-  border-left: 3px solid var(--cyan);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 15px;
-  padding-left: 16px;
-}
-.security-caption {
-  font-size: 12px;
-  margin-top: 16px;
-  color: var(--muted);
-}
-.ai-art {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  max-width: 500px;
-}
-.ai-input,
-.ai-output {
-  font-size: 12px;
-  line-height: 1.4;
-  max-width: 68px;
-}
-.ai-path {
-  height: 1px;
-  background: #94909f;
-  flex: 1;
-  margin: 0 12px;
-  min-width: 12px;
-}
-.ai-model {
-  border: 1px solid #8e8b98;
-  border-bottom: 3px solid var(--cyan);
-  padding: 16px 20px;
-  display: grid;
-  gap: 8px;
-  min-width: 108px;
-  text-align: center;
-}
-.ai-model span {
-  font-size: 11px;
-  color: var(--muted);
-}
-.ai-model strong {
-  font-size: 24px;
-  font-weight: 400;
+  aspect-ratio: 3 / 2;
+  max-height: 416px;
+  border-radius: 8px;
 }
 .custom-art > span {
   font-family: "Red Hat Display";
@@ -1838,9 +1663,6 @@ fieldset {
   .room-intro {
     gap: 32px;
   }
-  .room-art {
-    padding: 24px;
-  }
   .step-path {
     flex-wrap: wrap;
   }
@@ -2044,10 +1866,6 @@ fieldset {
   }
   .room-intro .room-description .prose {
     font-size: 17px;
-  }
-  .room-intro .room-art {
-    min-height: 200px;
-    padding: 28px;
   }
   .room-facts {
     gap: 12px;
@@ -2356,15 +2174,7 @@ fieldset {
   }
 }
 
-/* A room's chosen accent appears on its path and technical composition only;
-   body text, actions and the shared event identity keep their contrast. */
-.room-art .cluster-label,
-.room-art .cluster-base,
-.room-art .security-inner,
-.room-art .ai-model {
-  border-color: var(--room-accent, #008b9a);
-}
-.room-art .playbook-result > span,
+/* Room accents belong to progress; shared text and actions keep their contrast. */
 .room-card .progress-line > span {
   background: var(--room-accent, #008b9a);
 }

@@ -58,6 +58,76 @@
       "source": "https://docs.google.com/presentation/d/129CAs9ujrcmLQC9U4r_qddMf7tCb4WLAOIoOPGXHQJM/edit#slide=id.h102b67320974a3a4_12_6",
       "owner": "Red Hat / Open Tech Quest event organizers",
       "note": "Original image extracted from slide 5 layout, supplied by organizer for this event; no private slide text or notes included."
+    },
+    "room-art/ai-card.webp": {
+      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "prompt": "room-art/prompts.json#ai",
+      "license": "MIT",
+      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
+      "sha256": "423f77efe469ad95fc94f15a80f2984042f6b975b9214f03dc4aba9c4f1e3ad0"
+    },
+    "room-art/ai-hero.webp": {
+      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "prompt": "room-art/prompts.json#ai",
+      "license": "MIT",
+      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
+      "sha256": "55e503cd5ddb19b4de3ef20782af59cfd56c6b1d410b70281723db5f9f1805cb"
+    },
+    "room-art/ansible-card.webp": {
+      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "prompt": "room-art/prompts.json#ansible",
+      "license": "MIT",
+      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
+      "sha256": "5fbb488a116537a44e82c450d5aeb4e5f79a2eb350b377c4485c2dffce5d9567"
+    },
+    "room-art/ansible-hero.webp": {
+      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "prompt": "room-art/prompts.json#ansible",
+      "license": "MIT",
+      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
+      "sha256": "5485fcb22468280a06e244904f22d634184f36ed87e92d70ce720fdfdd19de40"
+    },
+    "room-art/openshift-card.webp": {
+      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "prompt": "room-art/prompts.json#openshift",
+      "license": "MIT",
+      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
+      "sha256": "1ddabe962cf3644c45c20ed69e0b9f214591595e1049c7798fb6690642a97514"
+    },
+    "room-art/openshift-hero.webp": {
+      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "prompt": "room-art/prompts.json#openshift",
+      "license": "MIT",
+      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
+      "sha256": "150ae5f5d83389731b82ed5bb7e551d96c870c35cd208b2d7a31fcf1016a5f3e"
+    },
+    "room-art/rhel-card.webp": {
+      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "prompt": "room-art/prompts.json#rhel",
+      "license": "MIT",
+      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
+      "sha256": "ed1a24244c515c63ff76aac74fd86d75269fbea9ed33f6bdd90e33e4cfab14c6"
+    },
+    "room-art/rhel-hero.webp": {
+      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "prompt": "room-art/prompts.json#rhel",
+      "license": "MIT",
+      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
+      "sha256": "f67ddffa20fd19aa46e67683f4f923e8254fc33076b43ea0209ba3397732bb26"
+    },
+    "room-art/security-card.webp": {
+      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "prompt": "room-art/prompts.json#security",
+      "license": "MIT",
+      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
+      "sha256": "d646994f2e9b618e93196411c2a6d0f9865cc5b8f0b159edcdf7cfbfc027a8a1"
+    },
+    "room-art/security-hero.webp": {
+      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "prompt": "room-art/prompts.json#security",
+      "license": "MIT",
+      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
+      "sha256": "7c4e70167864c86be6bd283b792fc1f5cb9133c6246057ef4c42c34eeea5c860"
     }
   }
 }

@@ -8,90 +8,29 @@ export function roomThemeStyle(room: Room): CSSProperties {
       : "#008b9a",
   } as CSSProperties;
 }
-function OpenShiftArt() {
-  return (
-    <div className="cluster-art" aria-hidden="true">
-      <div className="cluster-label">Application platform</div>
-      <div className="cluster-nodes">
-        <span>Build</span>
-        <i />
-        <span>Deploy</span>
-        <i />
-        <span>Scale</span>
-      </div>
-      <div className="cluster-base">
-        <span>Containers</span>
-        <span>Kubernetes</span>
-        <span>OpenShift</span>
-      </div>
-    </div>
-  );
-}
-function AnsibleArt() {
-  return (
-    <div className="playbook-art" aria-hidden="true">
-      <span className="code-comment">One playbook. Repeatable outcomes.</span>
-      <code>
-        <span>- hosts:</span> your_infrastructure
-        <br />
-        <span> tasks:</span>
-        <br /> - configure
-        <br /> - automate
-        <br /> - verify
-      </code>
-      <div className="playbook-result">
-        <span /> Consistent by design
-      </div>
-    </div>
-  );
-}
-function RhelArt() {
-  return (
-    <div className="terminal-art" aria-hidden="true">
-      <div className="terminal-bar">Red Hat Enterprise Linux</div>
-      <code>
-        <span>$</span> whoami
-        <br />
-        problem-solver
-        <br />
-        <span>$</span> systemctl status your-skills
-        <br />
-        <b>●</b> ready to run
-      </code>
-      <div className="terminal-foot">The foundation starts here</div>
-    </div>
-  );
-}
-function SecurityArt() {
-  return (
-    <div className="security-art" aria-hidden="true">
-      <div className="trust-boundary">
-        <span className="trust-label">Trust is verified</span>
-        <div className="security-inner">
-          <span>Identity</span>
-          <span>Policy</span>
-          <span>Evidence</span>
-        </div>
-      </div>
-      <div className="security-caption">Observe → investigate → protect</div>
-    </div>
-  );
-}
-function AIArt() {
-  return (
-    <div className="ai-art" aria-hidden="true">
-      <div className="ai-input">Your question</div>
-      <div className="ai-path" />
-      <div className="ai-model">
-        <span>Context</span>
-        <strong>Model</strong>
-        <span>Evaluation</span>
-      </div>
-      <div className="ai-path" />
-      <div className="ai-output">A useful answer</div>
-    </div>
-  );
-}
+const artwork: Record<string, { scene: string; alt: string }> = {
+  openshift: {
+    scene: "openshift",
+    alt: "An illustrated deployment workshop with connected server bays and a service gateway",
+  },
+  ansible: {
+    scene: "ansible",
+    alt: "An illustrated automation control room coordinating connected workstations",
+  },
+  rhel: {
+    scene: "rhel",
+    alt: "An illustrated Linux engine room with server racks and a maintenance bench",
+  },
+  security: {
+    scene: "security",
+    alt: "An illustrated security operations room with verification stations and a protected gateway",
+  },
+  ai: {
+    scene: "ai",
+    alt: "An illustrated AI research lab connecting data preparation, compute and evaluation",
+  },
+};
+const artBase = "/plugins/open_tech_quest/assets/branding/room-art";
 export function RoomArt({
   room,
   compact = false,
@@ -99,25 +38,36 @@ export function RoomArt({
   room: Room;
   compact?: boolean;
 }) {
-  const hero = assetUrl(room.theme?.hero_url);
+  const customHero = assetUrl(room.theme?.hero_url);
   const key = (room.theme?.layout || room.slug).toLowerCase();
+  const art = artwork[key];
+  const hero = customHero || (art && `${artBase}/${art.scene}-hero.webp`);
   return (
     <div
       className={`room-art art-${key}${compact ? " compact" : ""}`}
       style={roomThemeStyle(room)}
     >
       {hero ? (
-        <img src={hero} alt="" className="room-hero-image" />
-      ) : key.includes("openshift") ? (
-        <OpenShiftArt />
-      ) : key.includes("ansible") ? (
-        <AnsibleArt />
-      ) : key.includes("rhel") || key.includes("linux") ? (
-        <RhelArt />
-      ) : key.includes("security") ? (
-        <SecurityArt />
-      ) : key === "ai" ? (
-        <AIArt />
+        <img
+          src={hero}
+          srcSet={
+            !customHero && art
+              ? `${artBase}/${art.scene}-card.webp 640w, ${hero} 1536w`
+              : undefined
+          }
+          sizes={
+            compact
+              ? "(max-width: 700px) 90vw, (max-width: 1150px) 44vw, 30vw"
+              : "(max-width: 700px) 90vw, 44vw"
+          }
+          width={1536}
+          height={1024}
+          alt={!compact && !customHero && art ? art.alt : ""}
+          className="room-hero-image"
+          loading={compact ? "lazy" : "eager"}
+          fetchPriority={compact ? "auto" : "high"}
+          decoding="async"
+        />
       ) : (
         <div className="custom-art">
           <span>{room.name}</span>
@@ -133,6 +83,7 @@ export function RoomLogo({ room }: { room: Room }) {
     openshift: "openshift.png",
     ansible: "ansible.png",
     rhel: "rhel.png",
+    security: "openshift.png",
     ai: "ai.webp",
   };
   const logo = assetUrl(

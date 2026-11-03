@@ -18,6 +18,9 @@
    images, tables and code blocks. Expand **Preview introduction** to check
    formatting before **Save room**. Preview and participant views use the
    same sanitized renderer. Use the plain-text subtitle for the lobby card.
+   Each theme includes an illustrated room header and matching lobby image.
+   Leave **Hero image URL** blank to use it, or supply a local asset URL for
+   a custom scene. Product icons stay separate from the room illustration.
 5. Configure the event name, scheduled start/end, roster-release time and
    prize clock origins. The UI uses the organizer's browser local timezone;
    persistence and API timestamps use UTC. Leaving roster release empty

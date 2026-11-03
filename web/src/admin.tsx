@@ -531,6 +531,9 @@ function RoomForm({
                 defaultValue={room.theme.hero_url || ""}
                 placeholder="/plugins/open_tech_quest/assets/…"
               />
+              <small>
+                Leave blank to use this theme’s bundled room illustration.
+              </small>
             </label>
             <label className="field">
               <span>Theme layout</span>

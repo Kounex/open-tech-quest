@@ -28,8 +28,12 @@ No gradients, glow, invented product logos, emoji decorations, or fake stats.
 Use approved/public product assets with provenance and stable local URLs.
 Private catalogue source archives and session credentials stay out of Git.
 
-Each room gets its own theme component and asset slots, rather than five
-color variants of a single card. Theme changes do not change room identity.
+Each room gets its own generated architectural quest environment and asset
+slots, rather than five color variants of a single card. The deployment
+workshop, automation control room, Linux engine room, security operations
+room and AI research lab share an editorial isometric direction. Official
+product marks stay separate from the illustrations. Theme changes do not
+change room identity.
 Theme asset URLs are optional: a deliberate typography/content composition
 must work before an organizer supplies artwork; never show placeholder boxes.
 
