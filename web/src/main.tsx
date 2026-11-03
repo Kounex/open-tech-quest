@@ -1,5 +1,5 @@
 import { decode } from "./api";
-import { StrictMode } from "react";
+import { StrictMode, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { usePath, useResource } from "./hooks";
 import type { Bootstrap } from "./types";
@@ -18,6 +18,16 @@ function App() {
   const path = usePath();
   const bootstrap = useResource<Bootstrap>("/bootstrap", 10000);
   const data = bootstrap.data;
+  useLayoutEffect(() => {
+    if (!data) return;
+    // Only the bootstrap resource's accepted viewer/token pair may replace the
+    // shell nonce. Responses discarded by its sequence guard cannot reach here.
+    window.QUEST_INIT = {
+      ...window.QUEST_INIT,
+      viewer: data.viewer,
+      csrfNonce: data.csrfNonce ?? undefined,
+    };
+  }, [data]);
   const stage = path.replace(/\/$/, "") === "/quest/stage";
   return (
     <ParticipantSession viewer={data?.viewer} onChanged={bootstrap.refresh}>

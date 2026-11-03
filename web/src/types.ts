@@ -54,6 +54,7 @@ export interface RegistrationState {
   enabled: boolean;
 }
 export interface Bootstrap {
+  csrfNonce: string | null;
   registration: RegistrationState;
   event: QuestEvent;
   viewer: Viewer;
