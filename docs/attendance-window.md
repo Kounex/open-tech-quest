@@ -83,8 +83,12 @@ For tabs left open on pre-feature SPA code, new clients send
 `X-Quest-Attendance-UI: 1` on API requests. When attendance is open and an
 unconfirmed eligible participant's old browser fetch polls bootstrap
 (`Sec-Fetch-Dest: empty`, no capability header), return a clear 409 message
-asking for one refresh to load attendance. Existing SPA error handling displays
-it. Guests, administrators, confirmed users, closed windows and ordinary
+asking for one refresh to load attendance. Existing ordinary SPA error handling displays
+it. A pre-feature Stage page suppresses detailed bootstrap errors, so a tab
+holding that older Stage/app version needs one initial refresh to load the new
+participant session. Ask participants with pages left open across this upgrade
+to refresh once; thereafter attendance toggles update automatically on every
+Quest route, including Stage. Guests, administrators, confirmed users, closed windows and ordinary
 non-browser API consumers keep normal bootstrap responses. The header signals
 UI support only and never authorizes attendance. New clients get the dialog;
 legacy tabs can also use their existing inline ready button while capture is open.

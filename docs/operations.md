@@ -87,8 +87,11 @@ upgrade. It never starts event or room timers.
 Participants may dismiss an opening's prompt with **Not yet** and use its visible
 check-in action later. Reopening can prompt still-unconfirmed people again;
 already-confirmed people are not asked again. Account settings pages show a notice
-linking to Quest without abandoning unsaved edits. Tabs holding the older app
-receive a one-time refresh notice when attendance opens. See
+linking to Quest without abandoning unsaved edits. For this upgrade, ask
+participants with existing open pages to refresh once to load the new attendance
+UI; future window changes need no manual refresh. Most older Quest pages also
+receive an automatic refresh notice, while the older Stage view cannot display
+that notice. See
 [attendance-window.md](attendance-window.md) for the full delivery rules.
 
 The organizer view shows names, email, readiness and team membership with search
