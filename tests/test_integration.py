@@ -8,7 +8,7 @@ No pytest or other test dependencies are required.
 import os
 import tempfile
 import time
-import statistics
+import threading
 from pathlib import Path
 from sqlalchemy import event as sqlalchemy_event
 import unittest
@@ -19,7 +19,7 @@ from unittest.mock import patch
 from CTFd import create_app
 from CTFd.config import TestingConfig
 from CTFd.cache import cache
-from CTFd.models import ChallengeFiles, Challenges, Flags, Hints, Solves, Teams, Users, db
+from CTFd.models import ChallengeFiles, Challenges, Configs, Flags, Hints, Solves, Teams, Users, db
 from CTFd.utils import get_config, set_config
 from CTFd.plugins.open_tech_quest.models import (QuestEvent, QuestRoom, QuestStep,
     QuestStart, QuestPause, QuestAudit)
@@ -56,9 +56,12 @@ class QuestIntegration(unittest.TestCase):
             with db.engine.connect() as connection:
                 dialect = db.engine.dialect.name
                 connection.execute("PRAGMA foreign_keys=OFF" if dialect == "sqlite" else "SET FOREIGN_KEY_CHECKS=0")
+                revisions = [{"key": row.key, "value": row.value} for row in connection.execute(Configs.__table__.select()).fetchall() if row.key.endswith("_alembic_version")]
                 transaction = connection.begin()
                 for table in reversed(db.metadata.sorted_tables):
                     connection.execute(table.delete())
+                if revisions:
+                    connection.execute(Configs.__table__.insert(), revisions)
                 transaction.commit()
                 connection.execute("PRAGMA foreign_keys=ON" if dialect == "sqlite" else "SET FOREIGN_KEY_CHECKS=1")
             db.engine.dispose()
@@ -70,9 +73,12 @@ class QuestIntegration(unittest.TestCase):
             with db.engine.connect() as connection:
                 dialect = db.engine.dialect.name
                 connection.execute("PRAGMA foreign_keys=OFF" if dialect == "sqlite" else "SET FOREIGN_KEY_CHECKS=0")
+                revisions = [{"key": row.key, "value": row.value} for row in connection.execute(Configs.__table__.select()).fetchall() if row.key.endswith("_alembic_version")]
                 transaction = connection.begin()
                 for table in reversed(db.metadata.sorted_tables):
                     connection.execute(table.delete())
+                if revisions:
+                    connection.execute(Configs.__table__.insert(), revisions)
                 transaction.commit()
                 connection.execute("PRAGMA foreign_keys=ON" if dialect == "sqlite" else "SET FOREIGN_KEY_CHECKS=1")
             cache.clear()
@@ -217,7 +223,10 @@ class QuestIntegration(unittest.TestCase):
         self.action("start")
         self.start()
         self.action("pause")
-        self.assertEqual(self.solve(self.alice, 1).status_code, 409)
+        paused = self.solve(self.alice, 1)
+        self.assertEqual(paused.status_code, 409)
+        self.assertEqual(paused.json["data"]["status"], "paused")
+        self.assertIn("not submitted", paused.json["error"])
         with self.app.app_context():
             self.assertEqual(QuestPause.query.filter_by(ended_at=None).count(), 1)
         self.action("resume")
@@ -446,3 +455,60 @@ class QuestIntegration(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(self.bob.get("/team?next=%2Fchallenges").location, "/quest")
         self.assertNotEqual(self.alice.get("/team").location, "/quest")
+
+    def test_native_membership_commit_serializes_with_event_start_on_mariadb(self):
+        if self.app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
+            self.skipTest("Production row-lock serialization is exercised on MariaDB")
+        with self.app.app_context():
+            db.session.add(Users(id=5, name="Waiting player", email="waiting@example.test", password="test-only"))
+            db.session.commit()
+        from CTFd.plugins.open_tech_quest.guards import event as original_event
+        entered, release = threading.Event(), threading.Event()
+        local = threading.local()
+        def gate(lock=False):
+            result = original_event(lock=lock)
+            if getattr(local, "membership", False):
+                entered.set()
+                if not release.wait(3):
+                    raise RuntimeError("Test failed to release native membership transaction")
+            return result
+        def native_membership():
+            local.membership = True
+            return self.post(self.client(1), f"/api/v1/teams/{self.team_id}/members", {"user_id": 5})
+        def start_event():
+            return self.post(self.client(1), PREFIX + "/admin/event/action", {"action": "start"})
+        with patch("CTFd.plugins.open_tech_quest.guards.event", side_effect=gate):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                membership = pool.submit(native_membership)
+                self.assertTrue(entered.wait(3))
+                opening = pool.submit(start_event)
+                time.sleep(0.1)
+                try:
+                    self.assertFalse(opening.done(), "Event start must wait for the accepted draft membership transaction")
+                finally:
+                    release.set()
+                self.assertEqual(membership.result().status_code, 200)
+                self.assertEqual(opening.result().status_code, 200)
+        with self.app.app_context():
+            self.assertEqual(Users.query.get(5).team_id, self.team_id)
+            self.assertEqual(QuestEvent.query.get(1).status, "live")
+
+    def test_allocation_rechecks_population_after_waiting_for_mariadb_lock(self):
+        if self.app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
+            self.skipTest("Production repeatable-read snapshots are exercised on MariaDB")
+        from CTFd.plugins.open_tech_quest.service import event as locked_event
+        with self.app.app_context():
+            db.session.add(Users(id=5, name="Waiting player", email="waiting@example.test", password="test-only"))
+            db.session.commit()
+            locked_event(lock=True)
+            Users.query.get(5).team_id = self.team_id
+            db.session.flush()
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                pending = pool.submit(lambda: self.post(self.client(1), PREFIX + "/admin/teams/allocate", {"preview": False, "groups": [{"name": "Stale proposal", "user_ids": [5]}]}))
+                time.sleep(0.15)
+                self.assertFalse(pending.done())
+                db.session.commit()
+                result = pending.result()
+            self.assertEqual(result.status_code, 409, result.get_data(as_text=True))
+            db.session.expire_all()
+            self.assertEqual(Users.query.get(5).team_id, self.team_id)

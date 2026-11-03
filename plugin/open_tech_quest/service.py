@@ -26,6 +26,13 @@ def parse_time(value):
 
 
 def event(lock=False):
+    if lock:
+        # Authentication can open a MariaDB REPEATABLE READ snapshot before
+        # this lock is acquired. Every mutation calls this boundary before
+        # staging changes: discard that read transaction so subsequent checks
+        # see the population/history committed by the preceding lock holder.
+        from CTFd.models import db
+        db.session.rollback()
     query = QuestEvent.query.filter_by(id=1)
     return query.populate_existing().with_for_update().one() if lock else query.one()
 

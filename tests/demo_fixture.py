@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, "/opt/CTFd")
 from CTFd import create_app
-from CTFd.models import Challenges, ChallengeFiles, Flags, Hints, Solves, Teams, Users, db
+from CTFd.models import Challenges, ChallengeFiles, Configs, Flags, Hints, Solves, Teams, Users, db
 from CTFd.cache import cache
 from CTFd.utils import set_config
 from CTFd.utils.crypto import hash_password
@@ -30,9 +30,12 @@ def main():
         with db.engine.connect() as connection:
             dialect = db.engine.dialect.name
             connection.execute("PRAGMA foreign_keys=OFF" if dialect == "sqlite" else "SET FOREIGN_KEY_CHECKS=0")
+            revisions = [{"key": row.key, "value": row.value} for row in connection.execute(Configs.__table__.select()).fetchall() if row.key.endswith("_alembic_version")]
             transaction = connection.begin()
             for table in reversed(db.metadata.sorted_tables):
                 connection.execute(table.delete())
+            if revisions:
+                connection.execute(Configs.__table__.insert(), revisions)
             transaction.commit()
             connection.execute("PRAGMA foreign_keys=ON" if dialect == "sqlite" else "SET FOREIGN_KEY_CHECKS=1")
         cache.clear()

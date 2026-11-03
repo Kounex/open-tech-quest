@@ -45,6 +45,7 @@ def install_guards(app):
             if match and write:
                 mapped = QuestStep.query.filter_by(challenge_id=int(match[1])).first()
                 if mapped:
+                    event(lock=True)
                     challenge = Challenges.query.get(int(match[1]))
                     changed = "requirements" in data and data["requirements"] != challenge.requirements
                     # Native edit forms serialize numeric values as strings and
@@ -55,9 +56,9 @@ def install_guards(app):
             membership_write = path.startswith("/api/v1/teams") or (
                 path.startswith("/api/v1/users/") and ("team_id" in data or request.method == "DELETE")
             )
-            if write and membership_write and event().status != "draft":
+            if write and membership_write and event(lock=True).status != "draft":
                 return denied("Team membership and identity are locked after draft", 409)
-            if write and path.startswith("/api/v1/submissions") and event().status != "draft":
+            if write and path.startswith("/api/v1/submissions") and event(lock=True).status != "draft":
                 submission_match = re.fullmatch(r"/api/v1/submissions/(\d+)", path)
                 submission = Submissions.query.get(int(submission_match[1])) if submission_match else None
                 challenge_id = submission.challenge_id if submission else data.get("challenge_id")
@@ -138,6 +139,9 @@ def install_guards(app):
         e = event(lock=attempt)
         if e.status == "draft" or not e.start_at or now() < e.start_at or not released(e):
             return denied("The event has not opened")
+        if attempt and e.status == "paused":
+            message = "The event is paused. Your answer was not submitted; try again when organizers resume."
+            return jsonify(success=False, error=message, data={"status": "paused", "message": message}), 409
         if attempt and (e.status != "live" or not ctftime() or (e.end_at and now() > e.end_at)):
             return denied("Submissions are accepted only while the event is live", 409)
         start = QuestStart.query.filter_by(team_id=user.team_id, room_id=step.room_id).first()
