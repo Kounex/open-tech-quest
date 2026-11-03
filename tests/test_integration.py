@@ -1250,7 +1250,7 @@ class QuestIntegration(unittest.TestCase):
                     self.assertEqual(html.mimetype, "text/html")
                     self.assertIn("Public registration is closed", html.get_data(as_text=True))
                     self.assertIn("/login", html.get_data(as_text=True))
-                    for headers in ({}, {"Accept": "*/*"}):
+                    for headers in ({}, {"Accept": "*/*"}, {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"}):
                         navigation = self.guest.get("/register", headers=headers)
                         self.assertEqual(navigation.status_code, 403)
                         self.assertEqual(navigation.mimetype, "text/html")
