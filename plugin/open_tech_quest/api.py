@@ -160,7 +160,13 @@ def current_rooms():
 
 @api.route("/bootstrap")
 def bootstrap():
-    return success({"event": event_data(), "viewer": viewer(), "rooms": current_rooms(), "registration": registration.status()})
+    e, user = event(), get_current_user()
+    if (request.headers.get("Sec-Fetch-Dest") == "empty"
+            and request.headers.get("X-Quest-Attendance-UI") != "1"
+            and user and onboarding.eligible(user) and onboarding.settings().attendance_open
+            and QuestReadiness.query.get(user.id) is None):
+        fail("Attendance check-in is open. Refresh this page once to load the attendance confirmation.", 409)
+    return success({"event": event_data(e), "viewer": viewer(), "rooms": current_rooms(), "registration": registration.status()})
 
 
 @api.route("/session")
@@ -650,8 +656,8 @@ def ready_for_quest():
     row = QuestReadiness.query.get(user.id)
     state = onboarding.settings()
     if row is None:
-        if e.status != "draft" or state.phase not in ("check_in", "closed", "naming"):
-            fail("Attendance confirmation is closed", 409)
+        if not state.attendance_open or e.status != "draft" or state.phase not in ("check_in", "closed", "naming"):
+            fail("Attendance confirmation is closed. Wait for an organizer to open attendance check-in.", 409)
         row = QuestReadiness(user_id=user.id, ready_at=now(), late=state.phase != "check_in")
         db.session.add(row)
         audit("onboarding.ready", {"user_id": user.id, "late": row.late})
@@ -711,6 +717,7 @@ def onboarding_action():
     if action == "close_checkin":
         if state.phase != "check_in":
             fail("Check-in is not open", 409)
+        onboarding.change_attendance(e, False, "close_checkin")
         state.phase = "closed"
     elif action == "reopen_checkin":
         if state.phase != "closed":
@@ -807,3 +814,16 @@ def configure_registration():
     db.session.commit()
     registration.invalidate()
     return success(registration.status())
+
+
+@api.route("/admin/attendance", methods=["PATCH"])
+@admin
+def configure_attendance():
+    data = body()
+    e = event(lock=True)
+    if set(data) != {"enabled"}:
+        fail("Supply only enabled: true or false")
+    enabled = boolean(data["enabled"], "enabled")
+    onboarding.change_attendance(e, enabled, "organizer")
+    db.session.commit()
+    return success(onboarding.attendance(e))

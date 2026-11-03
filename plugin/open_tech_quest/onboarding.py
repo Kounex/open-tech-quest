@@ -5,8 +5,9 @@ import json
 from datetime import datetime
 from flask import current_app
 from CTFd.models import Awards, Submissions, Teams, Unlocks, Users, db
+from CTFd.utils.user import get_current_user
 from .models import (QuestOnboarding, QuestReadiness, QuestTeamName, QuestStart,
-                     QuestStep)
+                     QuestStep, QuestAudit)
 from .onboarding_math import optimize
 from .service import iso, now, released
 
@@ -54,6 +55,42 @@ def lock_name(team_id, actor_id):
     row.name_locked, row.claimed_by, row.claimed_at = True, actor_id, now()
 
 
+def attendance_reason(e, state=None):
+    state = state or settings()
+    if e.status != "draft":
+        return "Attendance can open only before the competition starts."
+    if state.phase not in ("check_in", "closed", "naming"):
+        return "Attendance cannot reopen after team rosters are finalized."
+    return None
+
+
+def attendance(e, state=None):
+    state = state or settings()
+    reason = attendance_reason(e, state)
+    return {"enabled": bool(state.attendance_open), "generation": state.attendance_generation,
+            "opened_at": iso(state.attendance_opened_at), "closed_at": iso(state.attendance_closed_at),
+            "can_open": reason is None, "reason": reason}
+
+
+def change_attendance(e, enabled, source):
+    state = settings()
+    blocked = attendance_reason(e, state) if enabled else None
+    if blocked:
+        raise OnboardingError(blocked)
+    if bool(state.attendance_open) == enabled:
+        return
+    previous = bool(state.attendance_open)
+    state.attendance_open = enabled
+    if enabled:
+        state.attendance_generation += 1
+        state.attendance_opened_at, state.attendance_closed_at = now(), None
+    else:
+        state.attendance_closed_at = now()
+    actor = get_current_user()
+    db.session.add(QuestAudit(actor_id=actor.id if actor else None, action="attendance.configure",
+                             detail={"old": previous, "new": enabled, "generation": state.attendance_generation, "source": source}))
+
+
 def participant(user, e):
     state = settings()
     ready = QuestReadiness.query.get(user.id)
@@ -67,7 +104,8 @@ def participant(user, e):
     return {"phase": state.phase, "team_size": state.team_size,
             "ready_at": iso(ready.ready_at) if ready else None, "late": bool(ready and ready.late),
             "roster_released": show, "team": roster,
-            "can_ready": eligible(user) and state.phase in ("check_in", "closed", "naming") and e.status == "draft" and not ready,
+            "attendance": attendance(e, state),
+            "can_ready": bool(state.attendance_open) and eligible(user) and state.phase in ("check_in", "closed", "naming") and e.status == "draft" and not ready,
             "can_name": bool(eligible(user) and ready and team and not team.banned and not team.hidden
                              and state.phase == "naming" and e.status == "draft" and not is_locked(team.id))}
 
@@ -79,6 +117,8 @@ def competing_teams():
 
 def finalization_reason():
     state = settings()
+    if state.attendance_open:
+        return "Close attendance capture before finalizing team rosters."
     ready = {r.user_id for r in QuestReadiness.query.all()}
     users = Users.query.filter_by(type="user", banned=False).all()
     teams = {team.id: team for team in Teams.query.all()}
@@ -104,6 +144,8 @@ def finalization_reason():
 
 def start_reason(e):
     from .demo import active_batch
+    if settings().attendance_open:
+        return "Close attendance capture before starting the competition."
     if active_batch():
         return "Remove demo content before starting the competition; organizers can preview it while in draft."
     if QuestStep.query.first() is None:
@@ -130,7 +172,7 @@ def summary(e):
     users = Users.query.filter_by(type="user", banned=False).all()
     reason = start_reason(e) if e.status == "draft" else "The event has already started."
     locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
-    return {"phase": state.phase, "team_size": state.team_size,
+    return {"phase": state.phase, "team_size": state.team_size, "attendance": attendance(e, state),
             "ready_count": sum(u.id in ready for u in users),
             "pending_count": sum(u.id not in ready for u in users),
             "unassigned_ready_count": sum(u.id in ready and not u.team_id for u in users),
@@ -148,7 +190,8 @@ def activity_teams():
 def fingerprint(e):
     state = settings()
     locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
-    payload = {"phase": state.phase, "team_size": state.team_size, "event": [e.status, e.name, iso(e.start_at), iso(e.end_at), iso(e.rosters_release_at), e.room_clock, e.overall_clock],
+    payload = {"phase": state.phase, "team_size": state.team_size,
+               "attendance": [bool(state.attendance_open), state.attendance_generation], "event": [e.status, e.name, iso(e.start_at), iso(e.end_at), iso(e.rosters_release_at), e.room_clock, e.overall_clock],
                "users": [(u.id, u.name, u.type, u.banned, u.team_id) for u in Users.query.order_by(Users.id).all()],
                "ready": [(r.user_id, iso(r.ready_at), r.late) for r in QuestReadiness.query.order_by(QuestReadiness.user_id).all()],
                "teams": [(t.id, t.name, t.banned, t.hidden, t.id in locked) for t in Teams.query.order_by(Teams.id).all()],
@@ -161,7 +204,9 @@ def fingerprint(e):
 def preview(e):
     state = settings()
     if e.status != "draft" or state.phase != "closed":
-        raise OnboardingError("Close check-in before previewing attendance optimization; it is unavailable after apply.")
+        raise OnboardingError("Close team preparation before previewing attendance optimization; it is unavailable after apply.")
+    if state.attendance_open:
+        raise OnboardingError("Close attendance capture before previewing or applying roster optimization.")
     ready = {r.user_id for r in QuestReadiness.query.all()}
     all_users = Users.query.order_by(Users.id).all()
     attendees = [u for u in all_users if eligible(u) and u.id in ready]

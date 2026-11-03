@@ -113,6 +113,10 @@ class QuestOnboarding(db.Model):
     applied_at = db.Column(UTCDateTime)
     finalized_at = db.Column(UTCDateTime)
     grandfathered = db.Column(db.Boolean, nullable=False, default=False)
+    attendance_open = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    attendance_generation = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    attendance_opened_at = db.Column(UTCDateTime)
+    attendance_closed_at = db.Column(UTCDateTime)
 
 
 class QuestReadiness(db.Model):

@@ -50,6 +50,8 @@ class QuestIntegration(unittest.TestCase):
             assert Challenges.query.count() == Solves.query.count() == 0
             assert QuestOnboarding.query.get(1).phase == "check_in"
             assert QuestOnboarding.query.get(1).team_size == 5
+            assert QuestOnboarding.query.get(1).attendance_open is False
+            assert QuestOnboarding.query.get(1).attendance_generation == 0
             assert QuestReadiness.query.count() == 0
 
     @classmethod
@@ -853,6 +855,11 @@ class QuestIntegration(unittest.TestCase):
             QuestTeamName.query.delete()
             db.session.commit()
 
+    def attendance_window(self, enabled):
+        response = self.post(self.admin, PREFIX + "/admin/attendance", {"enabled": enabled}, "PATCH")
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        return response.json["data"]
+
     def ready_user(self, client):
         response = self.post(client, PREFIX + "/onboarding/ready", {})
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
@@ -873,6 +880,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_onboarding_personal_ready_is_idempotent_and_has_no_clock_side_effects(self):
         self.open_onboarding()
+        self.attendance_window(True)
         self.assertEqual(self.guest.get(PREFIX + "/onboarding").status_code, 401)
         self.assertEqual(self.post(self.admin, PREFIX + "/onboarding/ready", {}).status_code, 403)
         self.assertEqual(self.alice.post(PREFIX + "/onboarding/ready", json={}).status_code, 403)
@@ -887,13 +895,16 @@ class QuestIntegration(unittest.TestCase):
             self.assertEqual(Solves.query.count(), 0)
             self.assertIsNone(QuestEvent.query.get(1).start_at)
         self.assertEqual(self.onboarding_action("close_checkin").status_code, 200)
+        self.attendance_window(True)
         late = self.ready_user(self.bob)
         self.assertTrue(late["late"])
+        self.attendance_window(False)
         self.assertEqual(self.onboarding_action("reopen_checkin").status_code, 200)
         self.assertTrue(self.bob.get(PREFIX + "/onboarding").json["data"]["late"])
 
     def test_onboarding_full_workflow_preserves_readiness_names_and_empty_team_history(self):
         self.open_onboarding()
+        self.attendance_window(True)
         for client in (self.alice, self.bob, self.carol):
             self.ready_user(client)
         self.assertEqual(self.post(self.admin, PREFIX + "/admin/event/action", {"action": "start"}).status_code, 409)
@@ -920,6 +931,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_onboarding_preview_rejects_changed_attendance_capacity_identity_membership(self):
         self.open_onboarding()
+        self.attendance_window(True)
         self.ready_user(self.alice)
         self.ready_user(self.bob)
         self.assertEqual(self.onboarding_action("close_checkin").status_code, 200)
@@ -928,7 +940,9 @@ class QuestIntegration(unittest.TestCase):
             self.assertEqual(result.status_code, 409, result.get_data(as_text=True))
             self.assertEqual(self.admin.get(PREFIX + "/admin/state").json["data"]["onboarding"]["phase"], "closed")
         plan = self.attendance_plan()
+        self.attendance_window(True)
         self.ready_user(self.carol)
+        self.attendance_window(False)
         reject(plan)
         plan = self.attendance_plan()
         self.assertEqual(self.post(self.admin, PREFIX + "/admin/onboarding", {"team_size": 4}, "PATCH").status_code, 200)
@@ -945,6 +959,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_onboarding_concurrent_once_name_claims_and_casefold_uniqueness(self):
         self.open_onboarding(capacity=2)
+        self.attendance_window(True)
         for client in (self.alice, self.bob, self.carol):
             self.ready_user(client)
         self.assertEqual(self.onboarding_action("close_checkin").status_code, 200)
@@ -964,6 +979,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_onboarding_late_arrivals_can_form_reasoned_capacity_bound_team(self):
         self.open_onboarding(capacity=1)
+        self.attendance_window(True)
         for client in (self.alice,self.bob,self.carol):
             self.ready_user(client)
         self.assertEqual(self.onboarding_action("close_checkin").status_code, 200)
@@ -972,7 +988,9 @@ class QuestIntegration(unittest.TestCase):
             db.session.add(Users(id=5, name="Late participant", email="late@example.test", password="test-only"))
             db.session.commit()
         late = self.client(5)
+        self.attendance_window(True)
         self.assertTrue(self.ready_user(late)["late"])
+        self.attendance_window(False)
         self.assertEqual(self.onboarding_action("finalize").status_code, 409)
         self.assertEqual(self.onboarding_action("create_late_team", user_ids=[5]).status_code, 400)
         self.assertEqual(self.onboarding_action("create_late_team", user_ids=[5], reason="Late arrival after attendance plan").status_code, 200)
@@ -987,6 +1005,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_onboarding_roster_privacy_and_native_frozen_name_bypasses(self):
         self.open_onboarding(capacity=2)
+        self.attendance_window(True)
         for client in (self.alice,self.bob,self.carol):
             self.ready_user(client)
         self.assertEqual(self.onboarding_action("close_checkin").status_code, 200)
@@ -1013,6 +1032,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_onboarding_optimizer_keeps_full_groups_minimal_moves_and_no_show_accounts(self):
         self.open_onboarding()
+        self.attendance_window(True)
         with self.app.app_context():
             password = Users.query.get(2).password
             for uid in range(5,24):
@@ -1043,6 +1063,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_onboarding_optimizer_preserves_activity_or_refuses_absent_members(self):
         self.open_onboarding()
+        self.attendance_window(True)
         self.ready_user(self.alice)
         self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
         with self.app.app_context():
@@ -1053,7 +1074,9 @@ class QuestIntegration(unittest.TestCase):
         refused = self.post(self.admin,PREFIX+"/admin/onboarding/optimize",{"preview":True})
         self.assertEqual(refused.status_code,409)
         self.assertIn("activity",refused.json["error"])
+        self.attendance_window(True)
         self.ready_user(self.bob)
+        self.attendance_window(False)
         plan = self.attendance_plan()
         self.assertEqual(plan["groups"][0]["team_id"],self.team_id)
         self.apply_attendance(plan)
@@ -1113,6 +1136,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_onboarding_ban_after_finalization_does_not_deadlock_start_or_move_roster(self):
         self.open_onboarding(capacity=2)
+        self.attendance_window(True)
         for client in (self.alice,self.bob,self.carol):
             self.ready_user(client)
         self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
@@ -1131,6 +1155,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_onboarding_reasoned_ineligible_removal_before_finalization(self):
         self.open_onboarding()
+        self.attendance_window(True)
         for client in (self.alice,self.bob,self.carol):
             self.ready_user(client)
         self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
@@ -1146,6 +1171,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_onboarding_generated_placeholder_must_change_but_meaningful_name_can_confirm(self):
         self.open_onboarding(capacity=1)
+        self.attendance_window(True)
         for client in (self.alice,self.bob,self.carol):
             self.ready_user(client)
         self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
@@ -1160,6 +1186,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_onboarding_hidden_team_names_remain_reserved_when_creating_replacement(self):
         self.open_onboarding()
+        self.attendance_window(True)
         with self.app.app_context():
             password = Users.query.get(2).password
             for uid in range(5,23):
@@ -1273,6 +1300,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_registration_reopen_uses_native_account_creation_and_existing_ready_login(self):
         self.open_onboarding()
+        self.attendance_window(True)
         self.assertEqual(self.post(self.admin, PREFIX + "/admin/registration", {"enabled": False}, "PATCH").status_code, 200)
         existing = self.app.test_client()
         self.assertEqual(existing.get("/login").status_code, 200)
@@ -1411,3 +1439,281 @@ class QuestIntegration(unittest.TestCase):
             self.assertEqual(Configs.query.filter_by(key="registration_visibility").one().value,"private")
             self.assertEqual(Configs.query.filter_by(key="unrelated_registration_test").one().value,"unchanged")
             self.assertEqual(QuestAudit.query.filter_by(action="registration.configure").count(),1)
+
+    def test_attendance_defaults_off_and_registration_never_confirms_a_person(self):
+        self.open_onboarding()
+        before = self.alice.get(PREFIX+"/onboarding").json["data"]
+        self.assertEqual(before["attendance"], {"enabled":False,"generation":0,"opened_at":None,"closed_at":None,"can_open":True,"reason":None})
+        self.assertFalse(before["can_ready"])
+        self.assertEqual(self.post(self.alice,PREFIX+"/onboarding/ready",{}).status_code,409)
+        for index,enabled in enumerate((False,True)):
+            if enabled:
+                self.attendance_window(True)
+            client = self.app.test_client()
+            self.assertEqual(client.get("/register").status_code,200)
+            with client.session_transaction() as session:
+                nonce = session["nonce"]
+            response = client.post("/register",data={"nonce":nonce,"name":f"Attendance signup {index}","email":f"attendance{index}@example.test","password":"test-only"})
+            self.assertEqual(response.status_code,302,response.get_data(as_text=True))
+            own = client.get(PREFIX+"/onboarding").json["data"]
+            self.assertIsNone(own["ready_at"])
+            self.assertEqual(own["can_ready"],enabled)
+            self.assertEqual(own["attendance"]["enabled"],enabled)
+        with self.app.app_context():
+            self.assertEqual(QuestReadiness.query.count(),0)
+            self.assertEqual(QuestStart.query.count(),0)
+            self.assertEqual(Solves.query.count(),0)
+            self.assertIsNone(QuestEvent.query.get(1).start_at)
+
+    def test_attendance_admin_strict_body_generations_audit_and_idempotence(self):
+        self.open_onboarding()
+        endpoint = PREFIX+"/admin/attendance"
+        with self.guest.session_transaction() as session:
+            session["nonce"]="quest-test-csrf"
+        self.assertEqual(self.post(self.guest,endpoint,{"enabled":True},"PATCH").status_code,401)
+        self.assertEqual(self.post(self.alice,endpoint,{"enabled":True},"PATCH").status_code,403)
+        self.assertEqual(self.admin.patch(endpoint,json={"enabled":True}).status_code,403)
+        for body in ({},{"enabled":1},{"enabled":"true"},{"enabled":None},{"enabled":True,"generation":99}):
+            self.assertEqual(self.post(self.admin,endpoint,body,"PATCH").status_code,400)
+        first = self.attendance_window(True)
+        self.assertTrue(first["enabled"])
+        self.assertEqual(first["generation"],1)
+        self.assertIsNotNone(first["opened_at"])
+        self.assertIsNone(first["closed_at"])
+        self.assertEqual(self.attendance_window(True),first)
+        closed = self.attendance_window(False)
+        self.assertEqual(closed["generation"],1)
+        self.assertEqual(closed["opened_at"],first["opened_at"])
+        self.assertIsNotNone(closed["closed_at"])
+        self.assertEqual(self.attendance_window(False),closed)
+        second = self.attendance_window(True)
+        self.assertEqual(second["generation"],2)
+        self.assertIsNone(second["closed_at"])
+        with self.app.app_context():
+            records = QuestAudit.query.filter_by(action="attendance.configure").order_by(QuestAudit.id).all()
+            self.assertEqual(len(records),3)
+            self.assertEqual([r.detail["new"] for r in records],[True,False,True])
+            self.assertTrue(all(r.actor_id == 1 and r.detail["source"] == "organizer" for r in records))
+            self.assertEqual(QuestStart.query.count(),0)
+        payload = self.admin.get(PREFIX+"/admin/state").json["data"]
+        self.assertEqual(payload["onboarding"]["attendance"],second)
+        self.assertEqual(payload["registration"],{"enabled":True})
+
+    def test_attendance_two_devices_confirm_once_and_closed_retries_preserve_time(self):
+        self.open_onboarding()
+        self.attendance_window(True)
+        def ready(uid):
+            return self.post(self.client(uid),PREFIX+"/onboarding/ready",{})
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses = list(pool.map(ready,(2,2)))
+        self.assertEqual([r.status_code for r in responses],[200,200])
+        timestamp = responses[0].json["data"]["ready_at"]
+        self.assertEqual(responses[1].json["data"]["ready_at"],timestamp)
+        self.attendance_window(False)
+        self.assertEqual(self.ready_user(self.alice)["ready_at"],timestamp)
+        self.assertEqual(self.ready_user(self.client(2))["ready_at"],timestamp)
+        rejected = self.bob.post(PREFIX+"/onboarding/ready",json={},headers={"CSRF-Token":"quest-test-csrf","X-Quest-Attendance-UI":"1"})
+        self.assertEqual(rejected.status_code,409)
+        with self.app.app_context():
+            self.assertEqual(QuestReadiness.query.count(),1)
+            self.assertEqual(QuestAudit.query.filter_by(action="onboarding.ready").count(),1)
+            self.assertEqual(QuestStart.query.count(),0)
+
+    def test_attendance_close_precedes_waiting_stale_confirmation(self):
+        self.open_onboarding()
+        self.attendance_window(True)
+        from CTFd.plugins.open_tech_quest.onboarding import change_attendance
+        entered,release = threading.Event(),threading.Event()
+        def gate(e,enabled,source):
+            if not enabled:
+                entered.set()
+                if not release.wait(3):
+                    raise RuntimeError("Attendance close gate was not released")
+            return change_attendance(e,enabled,source)
+        with patch("CTFd.plugins.open_tech_quest.onboarding.change_attendance",side_effect=gate):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                closing = pool.submit(lambda:self.post(self.client(1),PREFIX+"/admin/attendance",{"enabled":False},"PATCH"))
+                self.assertTrue(entered.wait(3))
+                confirming = pool.submit(lambda:self.post(self.client(2),PREFIX+"/onboarding/ready",{}))
+                time.sleep(.1)
+                try:
+                    self.assertFalse(confirming.done())
+                finally:
+                    release.set()
+                self.assertEqual(closing.result().status_code,200)
+                self.assertEqual(confirming.result().status_code,409)
+        with self.app.app_context():
+            self.assertEqual(QuestReadiness.query.count(),0)
+            self.assertFalse(QuestOnboarding.query.get(1).attendance_open)
+
+    def test_attendance_inflight_confirmation_finishes_before_close(self):
+        self.open_onboarding()
+        self.attendance_window(True)
+        entered,release = threading.Event(),threading.Event()
+        original_init = QuestReadiness.__init__
+        def gate(row,*args,**kwargs):
+            if kwargs.get("user_id") == 2:
+                entered.set()
+                if not release.wait(3):
+                    raise RuntimeError("Attendance ready gate was not released")
+            original_init(row,*args,**kwargs)
+        with patch.object(QuestReadiness,"__init__",gate):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                confirming = pool.submit(lambda:self.post(self.client(2),PREFIX+"/onboarding/ready",{}))
+                self.assertTrue(entered.wait(3))
+                closing = pool.submit(lambda:self.post(self.client(1),PREFIX+"/admin/attendance",{"enabled":False},"PATCH"))
+                time.sleep(.1)
+                try:
+                    self.assertFalse(closing.done())
+                finally:
+                    release.set()
+                confirmed,closed = confirming.result(),closing.result()
+        self.assertEqual(confirmed.status_code,200)
+        self.assertEqual(closed.status_code,200)
+        self.assertEqual(self.ready_user(self.alice)["ready_at"],confirmed.json["data"]["ready_at"])
+        with self.app.app_context():
+            self.assertEqual(QuestReadiness.query.count(),1)
+            self.assertFalse(QuestOnboarding.query.get(1).attendance_open)
+            self.assertEqual(QuestStart.query.count(),0)
+
+    def test_attendance_window_lifecycle_guards_and_generation_invalidate_preview(self):
+        self.open_onboarding()
+        self.attendance_window(True)
+        for client in (self.alice,self.bob):
+            self.ready_user(client)
+        closed = self.onboarding_action("close_checkin")
+        self.assertEqual(closed.status_code,200)
+        self.assertFalse(closed.json["data"]["attendance"]["enabled"])
+        self.assertEqual(self.onboarding_action("reopen_checkin").status_code,200)
+        self.assertFalse(self.alice.get(PREFIX+"/onboarding").json["data"]["attendance"]["enabled"])
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        plan = self.attendance_plan()
+        self.attendance_window(True)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/onboarding/optimize",{"preview":True}).status_code,409)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/onboarding/optimize",{"preview":False,"fingerprint":plan["fingerprint"]}).status_code,409)
+        self.attendance_window(False)
+        stale = self.post(self.admin,PREFIX+"/admin/onboarding/optimize",{"preview":False,"fingerprint":plan["fingerprint"]})
+        self.assertEqual(stale.status_code,409)
+        fresh = self.attendance_plan()
+        self.assertNotEqual(fresh["fingerprint"],plan["fingerprint"])
+        self.apply_attendance(fresh)
+        self.attendance_window(True)
+        self.assertEqual(self.onboarding_action("finalize").status_code,409)
+        self.assertEqual(self.post(self.alice,PREFIX+"/onboarding/name",{"name":"Window Foxes","confirm":True}).status_code,200)
+        self.attendance_window(False)
+        self.assertEqual(self.onboarding_action("finalize").status_code,200)
+        forbidden = self.post(self.admin,PREFIX+"/admin/attendance",{"enabled":True},"PATCH")
+        self.assertEqual(forbidden.status_code,409)
+        self.assertFalse(self.admin.get(PREFIX+"/admin/state").json["data"]["onboarding"]["attendance"]["can_open"])
+        # Corrupted/manual open state still cannot bypass the event-start guard.
+        with self.app.app_context():
+            QuestOnboarding.query.get(1).attendance_open = True
+            db.session.commit()
+        start = self.post(self.admin,PREFIX+"/admin/event/action",{"action":"start"})
+        self.assertEqual(start.status_code,409)
+        self.assertIn("Close attendance",start.json["error"])
+        self.attendance_window(False)
+        self.action("start")
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/attendance",{"enabled":True},"PATCH").status_code,409)
+        with self.app.app_context():
+            sources = [r.detail["source"] for r in QuestAudit.query.filter_by(action="attendance.configure").all()]
+            self.assertIn("close_checkin",sources)
+
+    def test_attendance_legacy_browser_refresh_prompt_is_narrow_and_not_authorization(self):
+        self.open_onboarding()
+        old = {"Sec-Fetch-Dest":"empty"}
+        supported = dict(old,**{"X-Quest-Attendance-UI":"1"})
+        self.assertEqual(self.alice.get(PREFIX+"/bootstrap",headers=old).status_code,200)
+        self.attendance_window(True)
+        legacy = self.alice.get(PREFIX+"/bootstrap",headers=old)
+        self.assertEqual(legacy.status_code,409)
+        self.assertIn("Refresh",legacy.json["error"])
+        self.assertEqual(self.alice.get(PREFIX+"/bootstrap",headers=supported).status_code,200)
+        self.assertEqual(self.alice.get(PREFIX+"/bootstrap").status_code,200)
+        self.assertEqual(self.alice.get(PREFIX+"/bootstrap",headers={"Sec-Fetch-Dest":"document"}).status_code,200)
+        self.assertEqual(self.guest.get(PREFIX+"/bootstrap",headers=old).status_code,200)
+        self.assertEqual(self.admin.get(PREFIX+"/bootstrap",headers=old).status_code,200)
+        self.ready_user(self.alice)
+        self.assertEqual(self.alice.get(PREFIX+"/bootstrap",headers=old).status_code,200)
+        self.assertEqual(self.bob.get(PREFIX+"/bootstrap",headers=old).status_code,409)
+        self.attendance_window(False)
+        self.assertEqual(self.bob.get(PREFIX+"/bootstrap",headers=old).status_code,200)
+        response = self.bob.post(PREFIX+"/onboarding/ready",json={},headers={"CSRF-Token":"quest-test-csrf","X-Quest-Attendance-UI":"1"})
+        self.assertEqual(response.status_code,409)
+
+    def test_attendance_upgrade_old_schema_preserves_ready_rosters_and_live_clocks(self):
+        from sqlalchemy import MetaData, Table, inspect
+        from CTFd.plugins.migrations import upgrade
+        from CTFd.plugins.open_tech_quest.schema import upgrade_sqlite_attendance
+        with self.app.app_context():
+            stamp = datetime.utcnow()-timedelta(minutes=4)
+            state = QuestOnboarding.query.get(1)
+            state.phase,state.applied_at,state.finalized_at = "finalized",stamp,stamp+timedelta(seconds=1)
+            e = QuestEvent.query.get(1)
+            e.status,e.start_at = "live",stamp+timedelta(seconds=2)
+            db.session.add(Solves(challenge_id=1,user_id=2,team_id=self.team_id,date=stamp+timedelta(seconds=10)))
+            db.session.commit()
+            old_values = {column.name:getattr(state,column.name) for column in QuestOnboarding.__table__.columns if not column.name.startswith("attendance_")}
+            ready = [(r.user_id,r.ready_at,r.late) for r in QuestReadiness.query.order_by(QuestReadiness.user_id).all()]
+            users = [(u.id,u.name,u.team_id) for u in Users.query.order_by(Users.id).all()]
+            teams = [(t.id,t.name) for t in Teams.query.order_by(Teams.id).all()]
+            db.session.remove()
+            old_table = Table("quest_onboarding",MetaData(),*(column.copy() for column in QuestOnboarding.__table__.columns if not column.name.startswith("attendance_")))
+            with db.engine.begin() as connection:
+                QuestOnboarding.__table__.drop(bind=connection)
+                old_table.create(bind=connection)
+                connection.execute(old_table.insert().values(**old_values))
+            self.assertNotIn("attendance_open",{column["name"] for column in inspect(db.engine).get_columns("quest_onboarding")})
+            set_config("open_tech_quest_alembic_version","quest_0004")
+            db.session.remove()
+            sqlite = db.engine.dialect.name == "sqlite"
+        def start_worker(_):
+            with self.app.app_context():
+                upgrade(plugin_name="open_tech_quest")
+                upgrade_sqlite_attendance()
+                return QuestOnboarding.query.get(1).attendance_generation
+        if sqlite:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                self.assertEqual(list(pool.map(start_worker,(1,2))),[0,0])
+        else:
+            self.assertEqual(start_worker(1),0)
+        with self.app.app_context():
+            db.session.expire_all()
+            state = QuestOnboarding.query.get(1)
+            self.assertEqual({column.name:getattr(state,column.name) for column in QuestOnboarding.__table__.columns if not column.name.startswith("attendance_")},old_values)
+            self.assertFalse(state.attendance_open)
+            self.assertEqual(state.attendance_generation,0)
+            self.assertIsNone(state.attendance_opened_at)
+            self.assertIsNone(state.attendance_closed_at)
+            self.assertEqual([(r.user_id,r.ready_at,r.late) for r in QuestReadiness.query.order_by(QuestReadiness.user_id).all()],ready)
+            self.assertEqual([(u.id,u.name,u.team_id) for u in Users.query.order_by(Users.id).all()],users)
+            self.assertEqual([(t.id,t.name) for t in Teams.query.order_by(Teams.id).all()],teams)
+            self.assertEqual(QuestEvent.query.get(1).start_at,stamp+timedelta(seconds=2))
+            self.assertEqual(Solves.query.one().date,stamp+timedelta(seconds=10))
+            if not sqlite:
+                columns = {column["name"]:column for column in inspect(db.engine).get_columns("quest_onboarding")}
+                self.assertEqual(columns["attendance_opened_at"]["type"].fsp,6)
+                self.assertEqual(columns["attendance_closed_at"]["type"].fsp,6)
+
+    def test_attendance_fresh_latest_metadata_migration_is_idempotent(self):
+        from importlib import import_module
+        from alembic.migration import MigrationContext
+        from alembic.operations import Operations
+        from sqlalchemy import inspect
+        from CTFd.plugins.open_tech_quest.schema import upgrade_sqlite_attendance
+        self.open_onboarding()
+        first = self.attendance_window(True)
+        timestamp = self.ready_user(self.alice)["ready_at"]
+        migration = import_module("CTFd.plugins.open_tech_quest.migrations.0005_attendance")
+        with self.app.app_context():
+            self.assertTrue({"attendance_open","attendance_generation","attendance_opened_at","attendance_closed_at"} <= {column["name"] for column in inspect(db.engine).get_columns("quest_onboarding")})
+            db.session.remove()
+            if db.engine.dialect.name == "sqlite":
+                upgrade_sqlite_attendance()
+                upgrade_sqlite_attendance()
+            else:
+                with db.engine.begin() as connection:
+                    migration.upgrade(Operations(MigrationContext.configure(connection)))
+                    migration.upgrade(Operations(MigrationContext.configure(connection)))
+        self.assertEqual(self.alice.get(PREFIX+"/onboarding").json["data"]["attendance"],first)
+        self.assertEqual(self.alice.get(PREFIX+"/onboarding").json["data"]["ready_at"],timestamp)

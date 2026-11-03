@@ -11,6 +11,8 @@ from .models import QuestEvent, QuestRoom
 
 def load(app):
     upgrade(plugin_name="open_tech_quest")
+    from .schema import upgrade_sqlite_attendance
+    upgrade_sqlite_attendance()
     if get_config("user_mode") != "teams":
         if Solves.query.filter_by(team_id=None).first():
             raise RuntimeError("Open Tech Quest requires teams; individual solves exist. Migrate ownership explicitly before enabling.")
