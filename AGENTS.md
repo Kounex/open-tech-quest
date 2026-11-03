@@ -44,4 +44,4 @@ They define the shared API, prize rules, event lifecycle, and design direction.
 Fleet context: `~/agent/it-env` (pull before any read, run skill installer
 after pull). GitOps clone on this Mac: `~/development/k8s/ocp-gitops`.
 Current app: namespace `ctfd`, Argo Application `ctfd-app`, URL
-`https://ctfd.apps.ocp.kounex.com`.
+`https://otq.apps.ocp.kounex.com`.
