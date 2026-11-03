@@ -34,17 +34,34 @@ teams. Administrator account provisioning remains native administrator behavior.
   state. Public registration links are shown only when the bootstrap confirms
   registration is open; a closed notice directs existing users to sign in.
 
-## Delivery and verification
+## Verification — 0.1.10
 
-This is a tier M feature: one implementation agent owns plugin/tests/frontend;
-the parent reviews the complete diff and owns documentation, isolated real
-browser checks and GitOps deployment. Reuse the native setting and existing
-mutation transaction boundary; avoid changing account/password handling.
+[CI run 41716840923](https://github.com/Kounex/open-tech-quest/actions/runs/41716840923)
+passed frontend checks, a real empty-install runtime smoke and 62 backend tests
+per database. SQLite skipped three dialect-specific cases; MariaDB skipped two.
 
-Focused tests cover administrator/CSRF checks, invalid values, cached prior
-visibility, blocked GET and POST signup, reopening and successful native account
-creation, persistence and independence from event/check-in state. Run the changed
-cases during implementation; run the required full SQLite/MariaDB, frontend and
-runtime gates once for the release. In an isolated instance, exercise the real
-organizer control and separate signup session, including an already-loaded
-form. Production verification is read-only and preserves its registration state.
+Focused coverage includes strict administrator/CSRF/input checks, unchanged
+state across startup and event phases, real native signup/login/readiness,
+loaded forms after closure, commit-before-cache-invalidation races and native
+configuration aliases under MariaDB's case/accent/space-insensitive collation.
+Closed native requests use an HTML page with a sign-in link by default,
+including Chrome's full Accept header; explicit JSON clients retain errors.
+
+In a disposable browser instance, upgrading from 0.1.9 preserved a private
+registration setting and an existing participant. The organizer opened signup,
+a new participant registered through the real form, then the organizer closed
+signup. A previously loaded form was rejected without creating an account;
+existing participant check-in still succeeded. Organizer status and audit
+entries matched those actions. The organizer WCAG A/AA scan found zero violations.
+
+[GitOps commit 37f2db3](https://github.com/Kounex/ocp-gitops/commit/37f2db3)
+pins the tested image in both init and runtime. All 37 kustomizations passed
+validation, including
+[GitOps CI 41717661018](https://github.com/Kounex/ocp-gitops/actions/runs/41717661018).
+A private pre-release SQL/uploads backup was verified before rollout.
+
+Live read-only checks verified exact served assets and agreement between public
+bootstrap, authenticated organizer state and native CTFd configuration. The
+existing public registration setting was preserved; no production signup or
+toggle was used for testing. Production registration can subsequently be changed
+through the organizer control without altering check-in or competition state.
