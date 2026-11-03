@@ -8,38 +8,25 @@ export function roomThemeStyle(room: Room): CSSProperties {
       : "#008b9a",
   } as CSSProperties;
 }
-const artwork: Record<
-  string,
-  { scene: string; product: string; topic: string; alt: string }
-> = {
+const artwork: Record<string, { scene: string; alt: string }> = {
   openshift: {
     scene: "openshift",
-    product: "Red Hat OpenShift",
-    topic: "Container orchestration",
     alt: "Application deployment branching into groups of container workloads on a red platform",
   },
   ansible: {
     scene: "ansible",
-    product: "Red Hat Ansible",
-    topic: "Playbook automation",
     alt: "An automation playbook coordinating server, laptop and network endpoints",
   },
   rhel: {
     scene: "rhel",
-    product: "Red Hat Enterprise Linux",
-    topic: "Linux systems and services",
     alt: "A Linux terminal and running services on a red operating-system foundation",
   },
   security: {
     scene: "security",
-    product: "Security",
-    topic: "Protect cloud-native workloads",
     alt: "A red shield protecting container workloads and a verified software-package chain",
   },
   ai: {
     scene: "ai",
-    product: "Red Hat AI",
-    topic: "Models and inference",
     alt: "Data flowing through a model processor into an inference response",
   },
 };
@@ -54,11 +41,10 @@ export function RoomArt({
   const customHero = assetUrl(room.theme?.hero_url);
   const key = (room.theme?.layout || room.slug).toLowerCase();
   const art = artwork[key];
-  const identity = artwork[room.slug.toLowerCase()] || art;
   const hero = customHero || (art && `${artBase}/${art.scene}-hero.webp`);
   return (
     <div
-      className={`room-art art-${key}${compact ? " compact" : ""}${!customHero && art ? " has-bundled-art" : ""}`}
+      className={`room-art art-${key}${compact ? " compact" : ""}`}
       style={roomThemeStyle(room)}
     >
       {hero ? (
@@ -86,15 +72,6 @@ export function RoomArt({
         <div className="custom-art">
           <span>{room.name}</span>
           <p>{room.subtitle || "A new path for your team"}</p>
-        </div>
-      )}
-      {!customHero && art && (
-        <div className="room-art-identity" aria-hidden="true">
-          <RoomLogo room={room} />
-          <div>
-            <span className="product-name">{identity.product}</span>
-            <span className="product-topic">{identity.topic}</span>
-          </div>
         </div>
       )}
     </div>

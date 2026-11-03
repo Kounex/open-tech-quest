@@ -2,7 +2,8 @@
 from flask import Blueprint, render_template, session
 from sqlalchemy.exc import IntegrityError
 from CTFd.models import Solves, db
-from CTFd.plugins import register_admin_plugin_menu_bar, register_plugin_stylesheet
+from CTFd.plugins import (register_admin_plugin_menu_bar, register_plugin_stylesheet,
+                          register_plugin_script, register_admin_plugin_script)
 from CTFd.plugins.migrations import upgrade
 from CTFd.utils import get_config, set_config
 from .models import QuestEvent, QuestRoom
@@ -38,4 +39,6 @@ def load(app):
     app.register_blueprint(api, url_prefix="/api/v1/quest")
     install_guards(app)
     register_plugin_stylesheet("/plugins/open_tech_quest/assets/app/native-auth.css")
+    register_plugin_script("/plugins/open_tech_quest/assets/app/native-brand.js")
+    register_admin_plugin_script("/plugins/open_tech_quest/assets/app/native-brand.js")
     register_admin_plugin_menu_bar("Open Tech Quest", "/quest/admin")

@@ -138,6 +138,21 @@
       "note": "Transparent product-topic event illustration. Exact official product icons and names are rendered separately in HTML.",
       "sha256": "f129190d3506a0ae09e73b14adc14fe862da77e022e70ba429692b943be2c08e",
       "transparent": true
+    },
+    "favicon.svg": {
+      "source": "Q glyph viewport from quest-mark.png; original event organizer artwork",
+      "owner": "Red Hat / Open Tech Quest event organizers",
+      "note": "Original Q glyph and red tail preserved; indigo background and browser-rendered size exports for favicons."
+    },
+    "favicon-32.png": {
+      "source": "Q glyph viewport from quest-mark.png; original event organizer artwork",
+      "owner": "Red Hat / Open Tech Quest event organizers",
+      "note": "Original Q glyph and red tail preserved; indigo background and browser-rendered size exports for favicons."
+    },
+    "apple-touch-icon.png": {
+      "source": "Q glyph viewport from quest-mark.png; original event organizer artwork",
+      "owner": "Red Hat / Open Tech Quest event organizers",
+      "note": "Original Q glyph and red tail preserved; indigo background and browser-rendered size exports for favicons."
     }
   }
 }

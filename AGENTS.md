@@ -18,8 +18,11 @@ They define the shared API, prize rules, event lifecycle, and design direction.
   client-supplied timestamps or award a second solve for a teammate.
 - UI and projector consume the same standings calculation. Do not count
   points as solved challenges. Preserve genuine ties.
-- The event starts in draft. No sample challenges, flags, or participants
-  are seeded in production. Demo data belongs in isolated test fixtures.
+- The event starts in draft. Startup never seeds sample event content.
+  Organizer-authorized demo load/unload is an explicit admin-only draft action,
+  with durable ownership tracking and preservation of real content. A loaded
+  demo must be removed before competition start. It never creates participants,
+  teams or progress. Bulk participant/progress fixtures remain isolated tests.
 - Theme changes must preserve room IDs, memberships, starts, and solves.
 - Every finished unit is committed and pushed. Every release runs backend
   integration tests, frontend checks/build, and container smoke tests.

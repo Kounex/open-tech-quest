@@ -95,6 +95,7 @@ export interface Participant {
   team_id: number | null;
 }
 export interface AdminState {
+  demo: DemoContentState;
   event: QuestEvent;
   rooms: Room[];
   available_challenges: {
@@ -114,6 +115,13 @@ export interface AdminState {
   }[];
   standings: Standings;
   projector: Projector;
+}
+export interface DemoContentState {
+  active: boolean;
+  challenge_count: number;
+  can_load: boolean;
+  can_unload: boolean;
+  reason: string | null;
 }
 export interface Challenge {
   id: number;

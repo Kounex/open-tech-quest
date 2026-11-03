@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { dateTime, request } from "./api";
 import { useResource } from "./hooks";
+import { DemoControls } from "./demo";
 import type {
   AdminState,
+  DemoContentState,
   Allocation,
   Projector,
   QuestEvent,
@@ -112,6 +114,7 @@ export function Admin() {
         {tab === "Event" ? (
           <EventControls
             event={data.event}
+            demo={data.demo}
             busy={busy}
             mutate={mutate}
             execute={execute}
@@ -150,11 +153,13 @@ type Execute = (
 ) => void;
 function EventControls({
   event,
+  demo,
   busy,
   mutate,
   execute,
 }: {
   event: QuestEvent;
+  demo: DemoContentState;
   busy: boolean;
   mutate: Mutation;
   execute: Execute;
@@ -266,6 +271,7 @@ function EventControls({
               description={action.description}
               disabled={
                 busy ||
+                (action.action === "start" && demo.active) ||
                 (["reopen", "unpublish"].includes(action.action) &&
                   !reason.trim())
               }
@@ -287,6 +293,20 @@ function EventControls({
           ))}
         </div>
       </section>
+      <DemoControls
+        state={demo}
+        busy={busy}
+        onAction={(action) =>
+          mutate(
+            "/admin/demo",
+            "POST",
+            { action },
+            action === "load"
+              ? "Demo content loaded across all five rooms"
+              : "Demo content removed",
+          )
+        }
+      />
       <section className="admin-panel">
         <h2>Event configuration</h2>
         <p className="section-copy">

@@ -34,6 +34,27 @@
 8. Configure SMTP before relying on password reset/email verification. It is
    an event deployment setting; no mail credentials belong in this repo.
 
+## Preview with demo content
+
+In `/quest/admin`, open **Event → Demo content → Load demo content**.
+Confirm the action to populate all five rooms with 25 clearly marked practice
+challenges, free hints and rich Markdown introductions. The examples provide
+all information needed to solve them without a live cluster or external lab.
+No participant accounts, teams, room starts or solves are created.
+
+Loading requires draft status and no existing room challenge mappings. Existing
+unmapped native challenges remain intact. The import records the exact IDs it
+creates and snapshots original room introductions/subtitles. **Preview the
+rooms** opens the full experience; organizer accounts can inspect challenge
+content and hints while participants still see draft/preparation notices.
+
+Use **Remove demo content** before starting the actual competition. Removal
+only deletes tracked demo content, restores original room text where it still
+matches the demo, and keeps subsequent organizer edits and unrelated real
+content. Removal refuses to erase demo attempt/start history. Competition
+start is blocked while a demo is loaded, preventing an accidental transition
+that would make cleanup unsafe. Load/removal operations are audited.
+
 ## During the event
 
 - Start the event through Open Tech Quest, not the native CTFd time settings.

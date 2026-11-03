@@ -21,7 +21,10 @@ without maintaining a fork of CTFd's core.
   roster release, exclusions, time corrections, CSV exports and publication.
 
 The first installation creates an event in **draft** with five empty rooms.
-It does not create participants, competition challenges or flags.
+It does not create participants, competition challenges or flags. Organizers
+can explicitly load and remove a self-contained demo from the Event tab: five
+challenges per room, hints and rich Markdown room introductions. The demo stays
+in draft and must be removed before starting the competition.
 
 ## Run locally
 

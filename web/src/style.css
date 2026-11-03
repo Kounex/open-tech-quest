@@ -536,38 +536,6 @@ svg {
   background: transparent;
   color: var(--indigo);
 }
-.room-art.has-bundled-art {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 12px;
-  padding: 16px 24px;
-}
-.room-art-identity {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-width: 0;
-}
-.room-art-identity .room-logo {
-  width: 36px;
-  height: 36px;
-}
-.room-art-identity span {
-  display: block;
-}
-.room-art-identity .product-name {
-  font-family: "Red Hat Display", Arial, sans-serif;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1.25;
-  color: var(--ink);
-}
-.room-art-identity .product-topic {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 4px;
-}
 .room-hero-image {
   display: block;
   width: 100%;

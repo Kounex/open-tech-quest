@@ -12,7 +12,8 @@ typed text or alter the mark's proportions.
 
 Public product technology icons are available for OpenShift, Ansible, RHEL,
 and AI. Security uses the OpenShift product icon at the organizer’s request.
-These are rendered unchanged beside the generated product-topic artwork.
+These are rendered unchanged in card titles and room headings; artwork
+contains no duplicate icon, product name or caption.
 
 Add future selected web exports here, with provenance; never add raw private
 catalogue archives, session data or credential-bearing download URLs. Room
@@ -40,4 +41,13 @@ All ten WebPs must retain their alpha channel. Validate actual transparent
 pixels and edges after encoding; an opaque gray/white background is not an
 acceptable substitute. The artwork container has no background fill, so
 white cards and the page surface show through naturally. Product names and
-exact official icons are rendered in HTML rather than regenerated into art.
+exact official icons appear once in the card title or room heading, rather
+than being repeated beneath the artwork.
+
+## Favicon
+
+`favicon.svg` places a viewport of the original event mark's Q glyph on the
+indigo event surface. It preserves the original white ring and red tail,
+without redrawing the logo. `favicon-32.png` and `apple-touch-icon.png` are
+browser-rendered raster exports for compatibility. Source glyph bounds in
+`quest-mark.png`: (41, 161)–(316, 440); padded viewBox: (24, 144, 308, 312).
