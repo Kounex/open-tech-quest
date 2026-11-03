@@ -1366,3 +1366,34 @@ class QuestIntegration(unittest.TestCase):
         with self.app.app_context():
             self.assertEqual(Users.query.filter_by(email="inflight@example.test").count(), 1)
             self.assertEqual(get_config("registration_visibility"), "private")
+
+    def test_registration_database_collation_aliases_cannot_change_controlled_setting(self):
+        from urllib.parse import quote
+        with self.app.app_context():
+            if db.engine.dialect.name != "mysql":
+                self.skipTest("MariaDB native config key collation")
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/registration",{"enabled":False},"PATCH").status_code,200)
+        with self.app.app_context():
+            set_config("unrelated_registration_test", "unchanged")
+        for alias in ("registration_visibility ", "régistration_visibility"):
+            with self.app.app_context():
+                # Establish the native database consequence rather than
+                # assuming Python string equality matches the real dialect.
+                self.assertEqual(Configs.query.filter_by(key=alias).one().key,"registration_visibility")
+            for path,method,payload in (
+                (f"/api/v1/configs/{quote(alias,safe='')}","PATCH",{"value":"public"}),
+                (f"/api/v1/configs/{quote(alias,safe='')}","DELETE",{}),
+                ("/api/v1/configs","PATCH",{alias:"public"}),
+                ("/api/v1/configs","POST",{"key":alias,"value":"public"}),
+                ("/api/v1/configs/unrelated_registration_test","PATCH",{"key":alias,"value":"public"}),
+            ):
+                response = self.post(self.admin,path,payload,method)
+                self.assertEqual(response.status_code,409,response.get_data(as_text=True))
+            legacy = self.admin.post("/admin/plugins/open_tech_quest",data={"nonce":"quest-test-csrf",alias:"public"})
+            self.assertEqual(legacy.status_code,409,legacy.get_data(as_text=True))
+            self.assertFalse(self.guest.get(PREFIX+"/bootstrap").json["data"]["registration"]["enabled"])
+        with self.app.app_context():
+            self.assertEqual(Configs.query.filter_by(key="registration_visibility").count(),1)
+            self.assertEqual(Configs.query.filter_by(key="registration_visibility").one().value,"private")
+            self.assertEqual(Configs.query.filter_by(key="unrelated_registration_test").one().value,"unchanged")
+            self.assertEqual(QuestAudit.query.filter_by(action="registration.configure").count(),1)

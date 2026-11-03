@@ -1,7 +1,7 @@
 """Guard native content paths as well as the SPA; known URLs grant no access."""
 import re
 from flask import abort, jsonify, redirect, request
-from CTFd.models import Challenges, Files, Hints, Solutions, Submissions, Teams, Users
+from CTFd.models import Challenges, Configs, Files, Hints, Solutions, Submissions, Teams, Users
 from CTFd.utils.dates import ctftime
 from CTFd.utils.user import get_current_user, is_admin
 from CTFd.utils.security.signing import unserialize, BadSignature, BadTimeSignature, SignatureExpired
@@ -12,6 +12,16 @@ from . import onboarding, registration
 
 def denied(message, status=403):
     return jsonify(success=False, error=message), status
+
+
+def controlled_config_write(names, controlled):
+    names = [name for name in names if isinstance(name, str)]
+    if any(name.casefold() in controlled for name in names):
+        return True
+    # Match the native lookup using the column's own database collation. On
+    # MariaDB, accents and trailing spaces can alias an existing canonical key.
+    # Python normalization cannot accurately reproduce those SQL semantics.
+    return Configs.query.filter(Configs.key.in_(controlled), Configs.key.in_(names)).first() is not None
 
 
 def install_guards(app):
@@ -55,9 +65,8 @@ def install_guards(app):
         if administrator:
             if write and (path.startswith("/api/v1/configs") or path.startswith("/admin/plugins/")):
                 controlled = {"user_mode", "start", "end", "paused", registration.KEY}
-                key = path.rsplit("/", 1)[-1].casefold()
-                field_key = data.get("key")
-                if key in controlled or {k.casefold() for k in data}.intersection(controlled) or (isinstance(field_key, str) and field_key.casefold() in controlled):
+                names = [path.rsplit("/", 1)[-1], *data.keys(), data.get("key")]
+                if controlled_config_write(names, controlled):
                     return denied("Manage team mode, event clocks and public registration through Open Tech Quest organizer controls", 409)
             if match and write:
                 mapped = QuestStep.query.filter_by(challenge_id=int(match[1])).first()
