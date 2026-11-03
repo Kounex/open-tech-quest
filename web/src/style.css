@@ -2316,3 +2316,29 @@ fieldset {
     padding: 20px;
   }
 }
+
+/* A room's chosen accent appears on its path and technical composition only;
+   body text, actions and the shared event identity keep their contrast. */
+.room-art .cluster-label,
+.room-art .cluster-base,
+.room-art .security-inner,
+.room-art .ai-model {
+  border-color: var(--room-accent, #008b9a);
+}
+.room-art .playbook-result > span,
+.room-card .progress-line > span {
+  background: var(--room-accent, #008b9a);
+}
+.step-path > li.step-solved {
+  border-top-color: var(--room-accent, #008b9a) !important;
+}
+.stage {
+  padding-bottom: 16px;
+}
+.stage-header {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+.stage-footer {
+  margin-top: 12px;
+}

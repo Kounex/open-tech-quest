@@ -1,5 +1,13 @@
+import type { CSSProperties } from "react";
 import type { Room } from "./types";
 import { assetUrl } from "./api";
+export function roomThemeStyle(room: Room): CSSProperties {
+  return {
+    "--room-accent": /^#[0-9a-fA-F]{6}$/.test(room.theme?.accent || "")
+      ? room.theme.accent
+      : "#008b9a",
+  } as CSSProperties;
+}
 function OpenShiftArt() {
   return (
     <div className="cluster-art" aria-hidden="true">
@@ -94,7 +102,10 @@ export function RoomArt({
   const hero = assetUrl(room.theme?.hero_url);
   const key = (room.theme?.layout || room.slug).toLowerCase();
   return (
-    <div className={`room-art art-${key}${compact ? " compact" : ""}`}>
+    <div
+      className={`room-art art-${key}${compact ? " compact" : ""}`}
+      style={roomThemeStyle(room)}
+    >
       {hero ? (
         <img src={hero} alt="" className="room-hero-image" />
       ) : key.includes("openshift") ? (

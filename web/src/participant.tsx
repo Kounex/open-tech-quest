@@ -3,7 +3,7 @@ import { ApiError, dateTime, decode, duration, fileUrl, request } from "./api";
 import type { Bootstrap, Challenge, Room, Step } from "./types";
 import { useResource } from "./hooks";
 import { Arrow, Check, Empty, Link, Markdown, Notice } from "./ui";
-import { RoomArt, RoomLogo } from "./room-art";
+import { RoomArt, RoomLogo, roomThemeStyle } from "./room-art";
 export function EventNotice({ data }: { data: Bootstrap }) {
   const { event, viewer } = data;
   return (
@@ -104,6 +104,7 @@ export function Lobby({ data }: { data: Bootstrap }) {
             key={room.id}
             href={`/quest/rooms/${room.slug}`}
             className={`room-card room-card-${room.slug}`}
+            style={roomThemeStyle(room)}
           >
             <RoomArt room={room} compact />
             <div className="room-card-content">
@@ -337,7 +338,11 @@ export function RoomPage({
       ) : (
         <>
           {solveMessage && <Notice tone="success">{solveMessage}</Notice>}
-          <ol className="step-path" aria-label="Challenge path">
+          <ol
+            className="step-path"
+            aria-label="Challenge path"
+            style={roomThemeStyle(room)}
+          >
             {room.steps.map((s, index) => (
               <li
                 key={s.id}
@@ -388,10 +393,8 @@ export function RoomPage({
               step={step}
               enabled={preview || data.event.status === "live"}
               preview={preview}
-              onSolved={async () => {
-                setSolveMessage(
-                  "Correct. Your team’s progress is saved and the next step is ready.",
-                );
+              onSolved={async (message) => {
+                setSolveMessage(message);
                 setSelected(null);
                 await Promise.all([resource.refresh(), onRefresh()]);
               }}
@@ -416,7 +419,7 @@ function ChallengePanel({
   step: Step;
   enabled: boolean;
   preview: boolean;
-  onSolved: () => Promise<void>;
+  onSolved: (message: string) => Promise<void>;
 }) {
   const content = useResource<Challenge>(
     `/api/v1/challenges/${step.id}${preview ? "?preview=true" : ""}`,
@@ -467,7 +470,11 @@ function ChallengePanel({
       await content.refresh();
       if (good && !preview) {
         setAnswer("");
-        await onSolved();
+        await onSolved(
+          messages[result.status] ||
+            result.message ||
+            "Your team’s progress is up to date.",
+        );
       }
     } catch (e) {
       setFeedback({ good: false, message: (e as Error).message });
