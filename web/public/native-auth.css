@@ -1,0 +1,153 @@
+@import url("/plugins/open_tech_quest/assets/branding/fonts.css");
+/* Keep CTFd's native authentication forms and handlers; scope the event identity
+   to password-bearing participant pages, leaving the native admin untouched. */
+body:has(main input#password) {
+  font-family: "Red Hat Text", Arial, sans-serif;
+  background: #f6f6f8 !important;
+  color: #202027 !important;
+  --bs-body-bg: #f6f6f8;
+  --bs-body-color: #202027;
+  --bs-link-color: #006a77;
+  --bs-border-color: #dddde3;
+}
+body:has(main input#password) .navbar {
+  background: #21143d !important;
+  border-top: 4px solid #e00;
+  min-height: 100px;
+  padding: 16px 24px;
+}
+body:has(main input#password) .navbar-brand {
+  font-size: 0;
+  width: 220px;
+  height: 64px;
+  display: block;
+  background: url("/plugins/open_tech_quest/assets/branding/quest-mark.png")
+    no-repeat left center/contain;
+}
+body:has(main input#password) .navbar-nav.me-auto {
+  display: none !important;
+}
+body:has(main input#password) .navbar-nav .dropdown,
+body:has(main input#password) .theme-switch {
+  display: none;
+}
+body:has(main input#password) .navbar .nav-link {
+  color: #f5f3f8;
+  font-size: 14px;
+  padding: 12px 16px;
+  position: relative;
+}
+body:has(main input#password) .navbar .nav-link::after {
+  content: "";
+  height: 2px;
+  position: absolute;
+  bottom: 4px;
+  left: 16px;
+  right: 16px;
+  background: #36c5d2;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+body:has(main input#password) .navbar .nav-link:hover::after {
+  transform: scaleX(1);
+}
+body:has(main input#password) main > .jumbotron {
+  background: none !important;
+  padding: 132px 24px 24px;
+  margin: 0;
+  color: #202027 !important;
+}
+body:has(main input#password) .jumbotron h1 {
+  font-family: "Red Hat Display", Arial, sans-serif;
+  font-size: 40px;
+  font-weight: 500;
+  text-align: center;
+  margin: 0;
+}
+body:has(main input#password) main > .container > .row > div {
+  max-width: 560px;
+  flex: 0 0 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+body:has(main input#password) main form[method="post"] {
+  background: #fff;
+  border: 1px solid #dddde3;
+  border-top: 3px solid #008b9a;
+  border-radius: 4px;
+  padding: 32px;
+  margin: 0 0 48px;
+  color: #202027;
+}
+body:has(main input#password) form b {
+  font-weight: 500;
+  font-size: 14px;
+}
+body:has(main input#password) .form-control {
+  font-family: inherit;
+  background: #fff !important;
+  color: #202027 !important;
+  border: 1px solid #a6a6b1;
+  border-radius: 4px;
+  min-height: 44px;
+  padding: 12px;
+  font-size: 16px;
+}
+body:has(main input#password) .btn-primary {
+  font-family: inherit;
+  border: 1px solid #c00;
+  background: #c00;
+  color: #fff;
+  min-height: 44px;
+  font-weight: 500;
+  border-radius: 4px;
+  transition: background 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+body:has(main input#password) .btn-primary:hover {
+  background: #a60000;
+  border-color: #a60000;
+}
+body:has(main input#password) main a {
+  color: #006a77;
+  text-underline-offset: 4px;
+  font-size: 14px;
+}
+body:has(main input#password) .footer {
+  background: none !important;
+  color: #60606a;
+  border-top: 1px solid #dddde3;
+  padding: 24px;
+  margin-top: 0;
+}
+body:has(main input#password) :is(a, button, input):focus-visible {
+  outline: 3px solid #008b9a;
+  outline-offset: 4px;
+  box-shadow: none;
+}
+@media (max-width: 760px) {
+  body:has(main input#password) .navbar {
+    min-height: 88px;
+    padding: 12px 20px;
+  }
+  body:has(main input#password) .navbar-brand {
+    width: 180px;
+    height: 56px;
+  }
+  body:has(main input#password) main > .jumbotron {
+    padding-top: 116px;
+  }
+  body:has(main input#password) main form[method="post"] {
+    padding: 24px;
+  }
+  body:has(main input#password) .jumbotron h1 {
+    font-size: 32px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  body:has(main input#password) *,
+  body:has(main input#password) *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
