@@ -134,3 +134,23 @@ Organizer and mobile-dialog WCAG A/AA scans reported no violations. The scanner
 could not automatically determine one dialog paragraph’s background because of
 the underlying Stage overlap; its rendered dark text on white was inspected.
 The mobile dialog fit a 390px viewport without horizontal scrolling.
+
+## Release verification — 2026-11-03
+
+Released [0.1.11](https://github.com/Kounex/open-tech-quest/releases/tag/v0.1.11)
+from source `9b80b7d`. [CI](https://github.com/Kounex/open-tech-quest/actions/runs/41725040989)
+passed 72 backend tests on each of SQLite and MariaDB, frontend checks/build,
+empty-install runtime smoke and the container’s test target. All 37 GitOps
+kustomizations passed local remote-host schema validation and
+[GitOps CI](https://github.com/Kounex/ocp-gitops/actions/runs/41727060425) passed.
+
+[GitOps revision 0678458](https://github.com/Kounex/ocp-gitops/commit/0678458a75a4a1b02065742bc0061c9d1dd0848b)
+pins both initialization and runtime to the same version and digest. Argo reported
+Synced/Healthy after rollout; all PVCs remain bound and the Doppler ExternalSecret
+remains ready. A fresh private SQL/uploads backup was taken before migration.
+
+Read-only live checks verified capture off at generation zero, registration
+still public, the draft event and all 25 demo challenges unchanged, and zero
+participants/teams/readiness records unchanged. All four served application and
+native branding assets matched the tested local build byte-for-byte. No production
+participants or confirmations were created and capture was never opened for QA.
