@@ -385,6 +385,7 @@ function InitialAllocation({ data, busy, mutate }: Props) {
         disabled={busy || loading}
         onClick={async () => {
           setLoading(true);
+          setPreview(null);
           setError("");
           try {
             setPreview(
@@ -447,7 +448,9 @@ function InitialAllocation({ data, busy, mutate }: Props) {
               label="Apply initial allocation"
               description={`Create the ${preview.groups.length} provisional teams shown above. Participants may still be moved when attendance is reviewed; this is not the final grouping or team naming step.`}
               disabled={
-                busy || preview.groups.some((group) => !group.name.trim())
+                busy ||
+                loading ||
+                preview.groups.some((group) => !group.name.trim())
               }
               onConfirm={async () => {
                 await mutate(
@@ -487,6 +490,7 @@ function OptimizeReview({ data, busy, mutate }: Props) {
         disabled={busy || loading}
         onClick={async () => {
           setLoading(true);
+          setPlan(null);
           setError("");
           try {
             setPlan(
@@ -520,8 +524,8 @@ function OptimizeReview({ data, busy, mutate }: Props) {
               <strong>{plan.moves.length}</strong> proposed moves
             </span>
             <span>
-              <strong>{plan.unassigned_user_ids.length}</strong> assignments
-              cleared
+              <strong>{plan.unassigned_user_ids.length}</strong> outside final
+              groups
             </span>
           </div>
           {plan.warnings.length > 0 && (
@@ -585,9 +589,10 @@ function OptimizeReview({ data, busy, mutate }: Props) {
             preview again.
           </p>
           <Confirm
+            key={plan.fingerprint}
             label="Apply reviewed groups"
             description="Apply exactly the reviewed attendance plan and open team naming. No-show assignments may be cleared without deleting accounts. After this, automatic rebalancing is unavailable because final names belong to these groups."
-            disabled={busy || !plan.groups.length}
+            disabled={busy || loading || !plan.groups.length}
             onConfirm={async () => {
               await mutate(
                 "/admin/onboarding/optimize",
