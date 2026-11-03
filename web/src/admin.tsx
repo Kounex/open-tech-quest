@@ -4,6 +4,7 @@ import { useResource } from "./hooks";
 import { DemoControls } from "./demo";
 import { Attendance } from "./attendance";
 import { RegistrationControls } from "./registration";
+import { AttendanceWindowControls } from "./attendance-window";
 import type {
   AdminState,
   AttendanceState,
@@ -303,6 +304,20 @@ function EventControls({
           </p>
         )}
       </section>
+      <AttendanceWindowControls
+        state={onboarding?.attendance}
+        busy={busy}
+        onChange={(enabled) =>
+          mutate(
+            "/admin/attendance",
+            "PATCH",
+            { enabled },
+            enabled
+              ? "Attendance check-in opened"
+              : "Attendance check-in closed",
+          )
+        }
+      />
       <RegistrationControls
         state={registration}
         busy={busy}

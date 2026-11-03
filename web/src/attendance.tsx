@@ -9,6 +9,7 @@ import type {
   Team,
 } from "./types";
 import { Confirm, Empty, Notice } from "./ui";
+import { AttendanceWindowControls } from "./attendance-window";
 
 type Mutation = (
   path: string,
@@ -18,7 +19,7 @@ type Mutation = (
 ) => Promise<void>;
 type Props = { data: AdminState; busy: boolean; mutate: Mutation };
 const phaseNames = {
-  check_in: "Check-in open",
+  check_in: "Team preparation",
   closed: "Attendance review",
   naming: "Team naming",
   finalized: "Rosters finalized",
@@ -86,6 +87,20 @@ export function Attendance({ data, busy, mutate }: Props) {
   );
   return (
     <>
+      <AttendanceWindowControls
+        state={state.attendance}
+        busy={busy}
+        onChange={(enabled) =>
+          mutate(
+            "/admin/attendance",
+            "PATCH",
+            { enabled },
+            enabled
+              ? "Attendance check-in opened"
+              : "Attendance check-in closed",
+          )
+        }
+      />
       <AttendanceLifecycle data={data} busy={busy} mutate={mutate} />
       <div
         className="attendance-counts"
@@ -122,7 +137,12 @@ export function Attendance({ data, busy, mutate }: Props) {
         />
       )}
       {data.event.status === "draft" && state.phase === "closed" && (
-        <OptimizeReview data={data} busy={busy} mutate={mutate} />
+        <OptimizeReview
+          key={`${state.attendance?.generation}-${state.attendance?.enabled}`}
+          data={data}
+          busy={busy}
+          mutate={mutate}
+        />
       )}
       {data.event.status === "draft" && state.phase === "naming" && (
         <LateQueue data={data} busy={busy} mutate={mutate} />
@@ -219,7 +239,7 @@ export function Attendance({ data, busy, mutate }: Props) {
           >
             {data.teams.length
               ? "Try another search or attendance filter."
-              : "Preview the initial allocation to group registered participants while check-in is open."}
+              : "Preview the initial allocation to group registered participants during team preparation."}
           </Empty>
         )
       ) : (
@@ -298,40 +318,43 @@ function AttendanceLifecycle({ data, busy, mutate }: Props) {
       <div className="actions">
         {draft && state.phase === "check_in" && (
           <Confirm
-            label="Close check-in"
-            description="Close the attendance window and move to review. Participants can still record a late arrival; new readiness invalidates an older optimization preview. No clocks are started."
+            key={`review-${state.attendance?.generation}-${state.attendance?.enabled}`}
+            label="Move to attendance review"
+            description="Close the attendance capture window and move the provisional teams to review. Existing readiness stays saved. Further confirmations require an organizer to explicitly reopen attendance check-in; no competition clock is started."
             disabled={busy}
             onConfirm={() =>
               mutate(
                 "/admin/onboarding/action",
                 "POST",
                 { action: "close_checkin" },
-                "Check-in closed; review the attending groups",
+                "Team preparation moved to attendance review",
               )
             }
           />
         )}
         {draft && state.phase === "closed" && (
           <Confirm
-            label="Reopen check-in"
-            description="Return to open check-in before final grouping has been applied. Participants keep their recorded readiness."
+            label="Return to team preparation"
+            description="Return to provisional team preparation before the final groups have been applied. This does not open attendance capture. Participants keep their recorded readiness; control the check-in window separately."
             disabled={busy}
             onConfirm={() =>
               mutate(
                 "/admin/onboarding/action",
                 "POST",
                 { action: "reopen_checkin" },
-                "Check-in reopened",
+                "Returned to team preparation; attendance capture is unchanged",
               )
             }
           />
         )}
         {draft && state.phase === "naming" && (
           <Confirm
+            key={`finalize-${state.attendance?.generation}-${state.attendance?.enabled}`}
             label="Finalize rosters"
             description="Freeze team membership after confirming every competing team has a final name, all assigned members are ready and no ready participant is waiting for placement. This does not start the event."
             disabled={
               busy ||
+              state.attendance?.enabled ||
               state.unassigned_ready_count > 0 ||
               state.unnamed_count > 0 ||
               state.ready_count === 0
@@ -347,6 +370,11 @@ function AttendanceLifecycle({ data, busy, mutate }: Props) {
           />
         )}
       </div>
+      {state.phase === "naming" && state.attendance?.enabled && (
+        <p className="attendance-blocker">
+          Close attendance check-in before finalizing the rosters
+        </p>
+      )}
       {state.phase === "naming" &&
         (state.unassigned_ready_count > 0 || state.unnamed_count > 0) && (
           <p className="attendance-blocker">
@@ -382,7 +410,8 @@ function InitialAllocation({ data, busy, mutate }: Props) {
       <p>
         Place eligible registered participants into provisional teams, up to the
         saved maximum of {data.onboarding.team_size}. Existing populated teams
-        are preserved. Attendance optimization comes after check-in closes.
+        are preserved. Attendance optimization comes during review with the
+        capture window closed.
       </p>
       <button
         className="button secondary"
@@ -491,7 +520,7 @@ function OptimizeReview({ data, busy, mutate }: Props) {
       </p>
       <button
         className="button secondary"
-        disabled={busy || loading}
+        disabled={busy || loading || data.onboarding.attendance?.enabled}
         onClick={async () => {
           setLoading(true);
           setPlan(null);
@@ -517,6 +546,12 @@ function OptimizeReview({ data, busy, mutate }: Props) {
             ? "Refresh optimization preview"
             : "Preview attendance optimization"}
       </button>
+      {data.onboarding.attendance?.enabled && (
+        <p className="attendance-blocker">
+          Close attendance check-in before previewing or applying the final
+          groups
+        </p>
+      )}
       {error && <Notice tone="error">{error}</Notice>}
       {plan && (
         <div className="optimization-review">
@@ -596,7 +631,12 @@ function OptimizeReview({ data, busy, mutate }: Props) {
             key={plan.fingerprint}
             label="Apply reviewed groups"
             description="Apply exactly the reviewed attendance plan and open team naming. No-show assignments may be cleared without deleting accounts. After this, automatic rebalancing is unavailable because final names belong to these groups."
-            disabled={busy || loading || !plan.groups.length}
+            disabled={
+              busy ||
+              loading ||
+              data.onboarding.attendance?.enabled ||
+              !plan.groups.length
+            }
             onConfirm={async () => {
               await mutate(
                 "/admin/onboarding/optimize",

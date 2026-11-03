@@ -20,6 +20,7 @@ export async function request<T>(
         credentials: "same-origin",
         headers: {
           Accept: "application/json",
+          "X-Quest-Attendance-UI": "1",
           ...(body === undefined ? {} : { "Content-Type": "application/json" }),
           ...(method === "GET"
             ? {}

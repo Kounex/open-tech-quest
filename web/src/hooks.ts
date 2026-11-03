@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { request } from "./api";
+import { ApiError, request } from "./api";
 export function useResource<T>(path: string | null, interval = 10000) {
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState(""),
@@ -17,8 +17,11 @@ export function useResource<T>(path: string | null, interval = 10000) {
         setError("");
       }
     } catch (e) {
-      if (id === sequence.current)
+      if (id === sequence.current) {
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403))
+          setData(null);
         setError(e instanceof Error ? e.message : "Unable to load");
+      }
     } finally {
       if (id === sequence.current) setLoading(false);
     }
@@ -35,11 +38,13 @@ export function useResource<T>(path: string | null, interval = 10000) {
       if (!document.hidden) void refresh();
     };
     window.addEventListener("online", visible);
+    window.addEventListener("focus", visible);
     document.addEventListener("visibilitychange", visible);
     return () => {
       ++sequence.current;
       clearInterval(tick);
       window.removeEventListener("online", visible);
+      window.removeEventListener("focus", visible);
       document.removeEventListener("visibilitychange", visible);
     };
   }, [refresh, interval]);

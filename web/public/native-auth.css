@@ -153,3 +153,62 @@ body:has(main input#password) :is(a, button, input):focus-visible {
     transition: none !important;
   }
 }
+
+.quest-attendance-native {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1050;
+  max-width: 440px;
+  width: calc(100% - 48px);
+  background: #fff;
+  color: #202027;
+  border: 1px solid #dddde3;
+  border-left: 3px solid #008b9a;
+  border-radius: 4px;
+  padding: 20px 24px;
+  font:
+    14px/1.5 "Red Hat Text",
+    Arial,
+    sans-serif;
+  box-shadow: 0 4px 16px #0001;
+}
+.quest-attendance-native p {
+  margin: 0 0 16px;
+}
+.quest-attendance-native > div {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.quest-attendance-native a {
+  color: #006a77;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  font-weight: 500;
+}
+.quest-attendance-native button {
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: #60606a;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.quest-attendance-native :is(a, button):focus-visible {
+  outline: 3px solid #008b9a;
+  outline-offset: 4px;
+}
+@media (max-width: 760px) {
+  .quest-attendance-native {
+    right: 16px;
+    bottom: 16px;
+    width: calc(100% - 32px);
+    padding: 16px 20px;
+  }
+  .quest-attendance-native > div {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+}

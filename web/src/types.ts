@@ -154,7 +154,16 @@ declare global {
 }
 
 export type OnboardingPhase = "check_in" | "closed" | "naming" | "finalized";
+export interface AttendanceWindow {
+  enabled: boolean;
+  generation: number;
+  opened_at: string | null;
+  closed_at: string | null;
+  can_open: boolean;
+  reason: string | null;
+}
 export interface Onboarding {
+  attendance: AttendanceWindow;
   phase: OnboardingPhase;
   team_size: number;
   ready_at: string | null;
@@ -170,6 +179,7 @@ export interface Onboarding {
   can_name: boolean;
 }
 export interface AttendanceState {
+  attendance: AttendanceWindow;
   phase: OnboardingPhase;
   team_size: number;
   ready_count: number;

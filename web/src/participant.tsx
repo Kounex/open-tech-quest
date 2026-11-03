@@ -64,13 +64,7 @@ export function EventNotice({ data }: { data: Bootstrap }) {
     </>
   );
 }
-export function Lobby({
-  data,
-  onRefresh,
-}: {
-  data: Bootstrap;
-  onRefresh: () => Promise<void>;
-}) {
+export function Lobby({ data }: { data: Bootstrap }) {
   const solved = data.rooms.reduce((a, r) => a + r.progress.solved, 0),
     total = data.rooms.reduce((a, r) => a + r.progress.total, 0);
   return (
@@ -109,7 +103,7 @@ export function Lobby({
           )}
         </div>
       </section>
-      <ParticipantOnboarding viewer={data.viewer} onChanged={onRefresh} />
+      <ParticipantOnboarding viewer={data.viewer} />
       <EventNotice data={data} />
       <div className="section-heading">
         <h2>Choose your room</h2>

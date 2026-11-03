@@ -1,55 +1,22 @@
 import { useState } from "react";
-import { dateTime, request } from "./api";
-import { useResource } from "./hooks";
-import type { Onboarding, Viewer } from "./types";
+import { dateTime } from "./api";
+import { useParticipantSession } from "./participant-session";
+import type { Viewer } from "./types";
 import { Check, Confirm, Notice } from "./ui";
 
-export function ParticipantOnboarding({
-  viewer,
-  onChanged,
-}: {
-  viewer: Viewer;
-  onChanged: () => Promise<void>;
-}) {
+export function ParticipantOnboarding({ viewer }: { viewer: Viewer }) {
   if (!viewer.authenticated || viewer.admin) return null;
-  return (
-    <PersonalOnboarding key={viewer.id} viewer={viewer} onChanged={onChanged} />
-  );
+  return <PersonalOnboarding key={viewer.id} viewer={viewer} />;
 }
-
-function PersonalOnboarding({
-  viewer,
-  onChanged,
-}: {
-  viewer: Viewer;
-  onChanged: () => Promise<void>;
-}) {
-  const resource = useResource<Onboarding>("/onboarding", 8000);
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState(""),
-    [name, setName] = useState("");
-  const state = resource.data;
-  async function update(path: string, body: unknown) {
-    setBusy(true);
-    setError("");
-    try {
-      const result = await request<Onboarding>(path, "POST", body);
-      resource.setData(result);
-      await onChanged();
-      await resource.refresh();
-    } catch (error) {
-      setError((error as Error).message);
-      await resource.refresh();
-      await onChanged();
-      throw error;
-    } finally {
-      setBusy(false);
-    }
-  }
+function PersonalOnboarding({ viewer }: { viewer: Viewer }) {
+  const session = useParticipantSession();
+  const [name, setName] = useState("");
+  if (!session) return null;
+  const { state, busy, error, update, openPrompt, refresh } = session;
   if (!state)
-    return resource.error ? (
-      <Notice tone="error" retry={() => void resource.refresh()}>
-        {resource.error}
+    return error ? (
+      <Notice tone="error" retry={() => void refresh()}>
+        {error}
       </Notice>
     ) : (
       <div className="onboarding-loading" role="status">
@@ -72,7 +39,9 @@ function PersonalOnboarding({
           <p>
             {state.ready_at
               ? `${viewer.name || "Your attendance"} · Confirmed ${dateTime(state.ready_at)}`
-              : "Confirm that you're here on your own device. Your organizers will bring the attending participants into teams."}
+              : state.can_ready
+                ? "Confirm that you're here on your own device. Your organizers will bring the attending participants into teams."
+                : "Your account is ready. Organizers open attendance check-in separately from registration and team preparation."}
           </p>
           <p className="meta">
             Checking in and choosing a team name never start a competition clock
@@ -83,27 +52,25 @@ function PersonalOnboarding({
             <Check /> {state.late ? "Late arrival recorded" : "Ready to quest"}
           </span>
         ) : state.can_ready ? (
-          <button
-            className="button"
-            disabled={busy}
-            onClick={() => void update("/onboarding/ready", {}).catch(() => {})}
-          >
-            {busy ? "Checking in…" : "I'm ready to quest"}
+          <button className="button" disabled={busy} onClick={openPrompt}>
+            Confirm your attendance
           </button>
         ) : (
           <span className="meta">
-            Check-in is not available for this account
+            {state.attendance?.enabled
+              ? "Attendance confirmation is not available for this account"
+              : "Attendance check-in is closed"}
           </span>
         )}
       </div>
-      {(error || resource.error) && (
-        <Notice tone="error" retry={() => void resource.refresh()}>
-          {error || resource.error}
+      {error && (
+        <Notice tone="error" retry={() => void refresh()}>
+          {error}
         </Notice>
       )}
       {state.late && (
         <div className="onboarding-note">
-          Your attendance was recorded after check-in closed.
+          Your attendance is recorded as a late arrival.
           {!team && (
             <>
               {" "}
@@ -122,7 +89,9 @@ function PersonalOnboarding({
           <p>
             {state.ready_at
               ? "Your check-in is saved. "
-              : "Confirm your attendance above when you're ready. "}
+              : state.can_ready
+                ? "Confirm your attendance above when you're ready. "
+                : "Attendance confirmation is available when organizers open check-in. "}
             Team names and teammates stay private until the organizers release
             the rosters.
           </p>
@@ -136,13 +105,15 @@ function PersonalOnboarding({
           </h3>
           <p>
             {state.phase === "check_in"
-              ? "Organizers are allocating provisional teams. You can confirm your attendance while they prepare the groups."
+              ? "Organizers are preparing provisional teams. Attendance can be confirmed only while the separate check-in window is open."
               : state.phase === "closed"
-                ? "Check-in has closed. Organizers are reviewing attendance and the final group sizes."
+                ? "Organizers are reviewing attendance and final group sizes. They control the attendance check-in window separately."
                 : state.phase === "naming"
                   ? state.ready_at
                     ? "Your readiness is saved. An organizer can place an attending late arrival before rosters are finalized."
-                    : "Check in above, then see an organizer about placement before rosters are finalized."
+                    : state.can_ready
+                      ? "Confirm attendance above, then see an organizer about placement before rosters are finalized."
+                      : "Ask an organizer about the next late-arrival check-in window and team placement."
                   : "The final rosters are fixed. An organizer can help you with the next step."}
           </p>
         </div>
