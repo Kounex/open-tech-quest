@@ -21,12 +21,15 @@ teams. Administrator account provisioning remains native administrator behavior.
 - PATCH `/api/v1/quest/admin/registration` accepts exactly `{enabled: boolean}`,
   requires the existing administrator session and CSRF protection, and returns
   the registration state. Its write and audit entry commit together.
-- Both organizer and native registration-setting mutations serialize with
-  native signup submissions through the existing event lock. Signup writes
+- Organizer registration-setting mutations serialize with native signup
+  submissions through the existing event lock. Signup writes
   check the authoritative database value after the lock, so a stale native
   config cache cannot admit an account after registration closes.
 - Native config cache invalidation follows commit; native administration reads
-  and writes the same setting. No duplicate state can drift.
+  the same setting. As with quest-controlled clock settings, native HTTP writes
+  to this setting are refused with guidance to use the organizer control. This
+  keeps one audited write path without copying native bulk-config logic. No
+  duplicate state can drift.
 - The organizer control displays current status, confirmation, errors and busy
   state. Public registration links are shown only when the bootstrap confirms
   registration is open; a closed notice directs existing users to sign in.
