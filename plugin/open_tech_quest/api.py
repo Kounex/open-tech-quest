@@ -7,7 +7,7 @@ import math
 from datetime import timezone
 from functools import wraps
 from urllib.parse import urlsplit
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, jsonify, request, session
 from werkzeug.exceptions import HTTPException
 from sqlalchemy.exc import IntegrityError
 from CTFd.cache import cache, clear_challenges, clear_standings, clear_user_session, clear_team_session
@@ -166,7 +166,10 @@ def bootstrap():
             and user and onboarding.eligible(user) and onboarding.settings().attendance_open
             and QuestReadiness.query.get(user.id) is None):
         fail("Attendance check-in is open. Refresh this page once to load the attendance confirmation.", 409)
-    return success({"event": event_data(e), "viewer": viewer(), "rooms": current_rooms(), "registration": registration.status()})
+    response = success({"event": event_data(e), "viewer": viewer(), "rooms": current_rooms(),
+                        "registration": registration.status(), "csrfNonce": session.get("nonce")})
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @api.route("/session")

@@ -1519,6 +1519,49 @@ class QuestIntegration(unittest.TestCase):
             self.assertEqual(QuestAudit.query.filter_by(action="onboarding.ready").count(),1)
             self.assertEqual(QuestStart.query.count(),0)
 
+    def test_attendance_account_switch_bootstrap_refreshes_csrf_without_weakening_checks(self):
+        self.open_onboarding()
+        self.attendance_window(True)
+        browser = self.app.test_client()
+        supported = {"Sec-Fetch-Dest":"empty", "X-Quest-Attendance-UI":"1"}
+        guest = browser.get(PREFIX+"/bootstrap",headers=supported)
+        self.assertEqual(guest.status_code,200)
+        self.assertFalse(guest.json["data"]["viewer"]["authenticated"])
+        self.assertIn("csrfNonce",guest.json["data"])
+        self.assertTrue(guest.cache_control.private)
+        self.assertTrue(guest.cache_control.no_store)
+        def login(name):
+            self.assertEqual(browser.get("/login").status_code,200)
+            with browser.session_transaction() as session:
+                nonce = session["nonce"]
+            response = browser.post("/login",data={"nonce":nonce,"name":name,"password":"test-only"})
+            self.assertEqual(response.status_code,302,response.get_data(as_text=True))
+            return browser.get(PREFIX+"/bootstrap",headers=supported)
+        alice = login("Alice")
+        self.assertEqual(alice.json["data"]["viewer"]["id"],2)
+        old_nonce = alice.json["data"]["csrfNonce"]
+        self.assertIsInstance(old_nonce,str)
+        self.assertEqual(browser.get("/logout").status_code,302)
+        bob = login("Bob")
+        self.assertEqual(bob.status_code,200)
+        self.assertEqual(bob.json["data"]["viewer"]["id"],3)
+        current_nonce = bob.json["data"]["csrfNonce"]
+        self.assertIsInstance(current_nonce,str)
+        self.assertNotEqual(current_nonce,old_nonce)
+        with browser.session_transaction() as session:
+            self.assertEqual(current_nonce,session["nonce"])
+        self.assertTrue(bob.cache_control.private)
+        self.assertTrue(bob.cache_control.no_store)
+        denied = browser.post(PREFIX+"/onboarding/ready",json={},headers={"CSRF-Token":old_nonce})
+        self.assertEqual(denied.status_code,403)
+        with self.app.app_context():
+            self.assertEqual(QuestReadiness.query.count(),0)
+        accepted = browser.post(PREFIX+"/onboarding/ready",json={},headers={"CSRF-Token":current_nonce})
+        self.assertEqual(accepted.status_code,200,accepted.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(QuestReadiness.query.one().user_id,3)
+            self.assertEqual(QuestStart.query.count(),0)
+
     def test_attendance_close_precedes_waiting_stale_confirmation(self):
         self.open_onboarding()
         self.attendance_window(True)
