@@ -1,0 +1,14 @@
+The MIT license applies to original Open Tech Quest application code.
+
+Red Hat trademarks and artwork under branding/ retain their owners' rights
+and are not relicensed by this repository. See branding/sources.json for
+provenance and branding/README.md for use of the supplied event mark.
+
+Red Hat Display and Red Hat Text fonts are distributed under the included
+SIL Open Font License 1.1 texts in branding/OFL-display.txt and OFL-text.txt.
+
+CTFd, included in the container base, retains its upstream Apache-2.0 license.
+
+Design refinement was informed by unslop by Damir Sokolovsky
+(https://x.com/heydamir), licensed CC BY 4.0. No unslop source, example
+screens, or reference imagery is distributed with the application.
