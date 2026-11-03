@@ -41,9 +41,10 @@ def install_guards(app):
             event(lock=True)
             if not registration.status()["enabled"]:
                 message = "Public registration is closed. Existing participants can still sign in and confirm attendance."
-                if request.accept_mimetypes.best == "text/html":
-                    abort(403, description=message)
-                return denied(message, 403)
+                wants_json = request.is_json or request.accept_mimetypes.best_match(["text/html", "application/json"]) == "application/json"
+                if wants_json:
+                    return denied(message, 403)
+                abort(403, description=message)
         elif write and (path == "/settings" or path.startswith("/api/v1/users")):
             # Native account handling remains responsible for credentials.
             event(lock=True)

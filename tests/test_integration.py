@@ -1239,10 +1239,10 @@ class QuestIntegration(unittest.TestCase):
                     # committed; the authoritative guard must reject both paths.
                     with self.app.app_context():
                         self.assertEqual(get_config("registration_visibility"), "public")
-                    response = self.guest.get("/register")
+                    response = self.guest.get("/register", headers={"Accept": "application/json"})
                     self.assertEqual(response.status_code, 403)
                     self.assertIn("registration is closed", response.json["error"])
-                    posted = self.guest.post("/register", data={"nonce": nonce, "name": "Stale form user", "email": "stale@example.test", "password": "test-only"})
+                    posted = self.guest.post("/register", data={"nonce": nonce, "name": "Stale form user", "email": "stale@example.test", "password": "test-only"}, headers={"Accept": "application/json"})
                     self.assertEqual(posted.status_code, 403)
                     self.assertIn("registration is closed", posted.json["error"])
                     html = self.guest.post("/register", data={"nonce": nonce, "name": "HTML stale form user", "email": "html-stale@example.test", "password": "test-only"}, headers={"Accept": "text/html,application/xhtml+xml;q=0.9"})
@@ -1250,6 +1250,20 @@ class QuestIntegration(unittest.TestCase):
                     self.assertEqual(html.mimetype, "text/html")
                     self.assertIn("Public registration is closed", html.get_data(as_text=True))
                     self.assertIn("/login", html.get_data(as_text=True))
+                    for headers in ({}, {"Accept": "*/*"}):
+                        navigation = self.guest.get("/register", headers=headers)
+                        self.assertEqual(navigation.status_code, 403)
+                        self.assertEqual(navigation.mimetype, "text/html")
+                        self.assertIn("Public registration is closed", navigation.get_data(as_text=True))
+                        self.assertIn("/login", navigation.get_data(as_text=True))
+                        form = self.guest.post("/register", data={"nonce": nonce, "name": "Default browser form", "email": "default-browser@example.test", "password": "test-only"}, headers=headers)
+                        self.assertEqual(form.status_code, 403)
+                        self.assertEqual(form.mimetype, "text/html")
+                        self.assertIn("/login", form.get_data(as_text=True))
+                    json_body = self.guest.post("/register", json={}, headers={"CSRF-Token": nonce})
+                    self.assertEqual(json_body.status_code, 403)
+                    self.assertEqual(json_body.mimetype, "application/json")
+                    self.assertIn("registration is closed", json_body.json["error"])
                     with self.app.app_context():
                         self.assertEqual(Users.query.count(), 4)
                 finally:
