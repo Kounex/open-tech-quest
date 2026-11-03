@@ -19,7 +19,7 @@ without maintaining a fork of CTFd's core.
 - Room prizes by progress then elapsed time; overall prizes by distinct solves
   then elapsed event time. Genuine ties retain the same rank.
 - A projector overview for 50 named teams, focused standings and awards views.
-- Organizer controls for room composition, themes, balanced team allocation,
+- Organizer controls for public registration, room composition, themes, team allocation,
   roster release, exclusions, time corrections, CSV exports and publication.
 
 The first installation creates an event in **draft** with five empty rooms.

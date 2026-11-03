@@ -103,6 +103,12 @@ See [onboarding.md](onboarding.md) for the complete lifecycle, additive API seam
 privacy and stale-preview/concurrency guarantees. Native self-service team routes
 and native administrator writes cannot bypass the roster lifecycle.
 
+Public account registration is an independent organizer control backed by
+CTFd's native registration setting. Closing it blocks new self-signups,
+including an already-loaded form; existing accounts still sign in and confirm
+attendance. Native HTTP configuration writes cannot bypass the audited quest
+control. See [registration.md](registration.md).
+
 ## API contract
 
 All endpoints use `/api/v1/quest`. JSON responses follow CTFd's
@@ -132,7 +138,7 @@ Public standings expose team display names and aggregate results only.
 
 ### Participant and projector
 
-- GET `/bootstrap`: `{event, viewer, rooms}`; safe lobby metadata for guests.
+- GET `/bootstrap`: `{event, viewer, rooms, registration}`; safe lobby metadata for guests.
 - GET `/rooms`: Room array for the current viewer.
 - GET `/rooms/<slug>`: Room for current viewer.
 - POST `/rooms/<slug>/start`: Room; idempotent for teammates, requires team,
@@ -147,9 +153,12 @@ Public standings expose team display names and aggregate results only.
 ### Administrator
 
 - GET `/admin/state`: `{event, rooms, available_challenges, teams,
-  participants, audit, standings, projector}`. Admin-only participants may
+  participants, audit, standings, projector, registration, onboarding, demo}`. Admin-only participants may
   include email; never include passwords, tokens, raw submitted flags.
 - PATCH `/admin/event`: event configuration fields; validate times/policies.
+- PATCH `/admin/registration`: `{enabled:boolean}`; control native public signup
+  in any event phase. Both bootstrap and admin state include
+  `registration:{enabled:boolean}` from the authoritative native setting.
 - POST `/admin/event/action`: `{action: start|pause|resume|close|publish}`.
 - PATCH `/admin/rooms/<slug>`: room metadata/theme and `challenge_ids`.
   Validate IDs, duplicates, cross-room reuse. Update native Requirements,
