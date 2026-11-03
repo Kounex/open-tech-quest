@@ -595,13 +595,6 @@ function ChallengePanel({
                       className="text-button"
                       disabled={hintBusy !== null || !enabled}
                       onClick={async () => {
-                        if (
-                          hint.cost > 0 &&
-                          !window.confirm(
-                            `Reveal hint ${i + 1} for ${hint.cost} native CTFd points? This cannot be undone.`,
-                          )
-                        )
-                          return;
                         setHintBusy(hint.id);
                         setHintError("");
                         try {
@@ -609,6 +602,13 @@ function ChallengePanel({
                             `/api/v1/hints/${hint.id}`,
                           );
                           if (typeof result.content !== "string") {
+                            if (
+                              hint.cost > 0 &&
+                              !window.confirm(
+                                `Reveal hint ${i + 1} for ${hint.cost} native CTFd points? This cannot be undone.`,
+                              )
+                            )
+                              return;
                             try {
                               await request("/api/v1/unlocks", "POST", {
                                 target: hint.id,

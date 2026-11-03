@@ -172,7 +172,11 @@ function ConfirmDialog({
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   useEffect(() => {
+    const previous = document.activeElement;
     ref.current?.showModal();
+    return () => {
+      if (previous instanceof HTMLElement) previous.focus();
+    };
   }, []);
   return (
     <dialog
