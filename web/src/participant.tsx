@@ -597,10 +597,15 @@ function ChallengePanel({
                       onClick={async () => {
                         setHintBusy(hint.id);
                         setHintError("");
+                        const hintPath = `/api/v1/hints/${hint.id}${preview ? "?preview=true" : ""}`;
                         try {
                           let result = await request<{ content?: string }>(
-                            `/api/v1/hints/${hint.id}`,
+                            hintPath,
                           );
+                          if (preview && typeof result.content !== "string")
+                            throw new Error(
+                              "This hint is not available in organizer preview.",
+                            );
                           if (typeof result.content !== "string") {
                             if (
                               hint.cost > 0 &&
@@ -617,14 +622,14 @@ function ChallengePanel({
                             } catch (unlockError) {
                               const shared = await request<{
                                 content?: string;
-                              }>(`/api/v1/hints/${hint.id}`);
+                              }>(hintPath);
                               if (typeof shared.content !== "string")
                                 throw unlockError;
                               result = shared;
                             }
                             if (typeof result.content !== "string")
                               result = await request<{ content: string }>(
-                                `/api/v1/hints/${hint.id}`,
+                                hintPath,
                               );
                           }
                           if (typeof result.content !== "string")
@@ -642,7 +647,9 @@ function ChallengePanel({
                     >
                       {hintBusy === hint.id
                         ? "Loading hint…"
-                        : `Reveal hint ${i + 1}${hint.cost ? ` · ${hint.cost} points` : ""}`}
+                        : preview
+                          ? `Preview hint ${i + 1}`
+                          : `Reveal hint ${i + 1}${hint.cost ? ` · ${hint.cost} points` : ""}`}
                       <Arrow />
                     </button>
                   )}
