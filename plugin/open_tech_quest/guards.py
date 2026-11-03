@@ -1,13 +1,13 @@
 """Guard native content paths as well as the SPA; known URLs grant no access."""
 import re
-from flask import jsonify, redirect, request
+from flask import abort, jsonify, redirect, request
 from CTFd.models import Challenges, Files, Hints, Solutions, Submissions, Teams, Users
 from CTFd.utils.dates import ctftime
 from CTFd.utils.user import get_current_user, is_admin
 from CTFd.utils.security.signing import unserialize, BadSignature, BadTimeSignature, SignatureExpired
 from .models import QuestStep, QuestStart
 from .service import event, now, released, solve_map
-from . import onboarding
+from . import onboarding, registration
 
 
 def denied(message, status=403):
@@ -24,9 +24,18 @@ def install_guards(app):
         data = data if isinstance(data, dict) or hasattr(data, "get") else {}
         if path == "/":
             return redirect("/quest")
-        if write and (path in ("/register", "/settings") or path.startswith("/api/v1/users")):
-            # Registration and account edits participate in the attendance
-            # fingerprint transaction while native credential handling stays.
+        if path == "/register":
+            # Check the database under the same write lock as organizer
+            # toggles. A cached public value cannot admit an already-open form
+            # after registration was closed, even before cache invalidation.
+            event(lock=True)
+            if not registration.status()["enabled"]:
+                message = "Public registration is closed. Existing participants can still sign in and confirm attendance."
+                if request.accept_mimetypes.best == "text/html":
+                    abort(403, description=message)
+                return denied(message, 403)
+        elif write and (path == "/settings" or path.startswith("/api/v1/users")):
+            # Native account handling remains responsible for credentials.
             event(lock=True)
         if path in ("/teams/new", "/teams/join", "/teams/invite"):
             return denied("Team allocation and naming are managed through Open Tech Quest")
@@ -44,11 +53,12 @@ def install_guards(app):
         # authoring is used for the actual descriptions, files and flags.
         match = re.fullmatch(r"/api/v1/challenges/(\d+)", path)
         if administrator:
-            if write and path.startswith("/api/v1/configs"):
-                controlled = {"user_mode", "start", "end", "paused"}
-                key = path.rsplit("/", 1)[-1]
-                if key in controlled or set(data).intersection(controlled) or data.get("key") in controlled:
-                    return denied("Manage team mode and event clocks through Open Tech Quest", 409)
+            if write and (path.startswith("/api/v1/configs") or path.startswith("/admin/plugins/")):
+                controlled = {"user_mode", "start", "end", "paused", registration.KEY}
+                key = path.rsplit("/", 1)[-1].casefold()
+                field_key = data.get("key")
+                if key in controlled or {k.casefold() for k in data}.intersection(controlled) or (isinstance(field_key, str) and field_key.casefold() in controlled):
+                    return denied("Manage team mode, event clocks and public registration through Open Tech Quest organizer controls", 409)
             if match and write:
                 mapped = QuestStep.query.filter_by(challenge_id=int(match[1])).first()
                 if mapped:

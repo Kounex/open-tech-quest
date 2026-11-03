@@ -73,9 +73,11 @@ function App() {
             ) : (
               <>
                 <a href="/login?next=/quest">Sign in</a>
-                <a className="register-link" href="/register?next=/quest">
-                  Register
-                </a>
+                {data?.registration?.enabled && (
+                  <a className="register-link" href="/register?next=/quest">
+                    Register
+                  </a>
+                )}
               </>
             )}
           </div>

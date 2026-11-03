@@ -3,12 +3,14 @@ import { dateTime, request } from "./api";
 import { useResource } from "./hooks";
 import { DemoControls } from "./demo";
 import { Attendance } from "./attendance";
+import { RegistrationControls } from "./registration";
 import type {
   AdminState,
   AttendanceState,
   DemoContentState,
   Projector,
   QuestEvent,
+  RegistrationState,
   Room,
 } from "./types";
 import { Arrow, Confirm, Empty, Markdown, Notice } from "./ui";
@@ -116,6 +118,7 @@ export function Admin() {
             event={data.event}
             demo={data.demo}
             onboarding={data.onboarding}
+            registration={data.registration}
             busy={busy}
             mutate={mutate}
             execute={execute}
@@ -151,6 +154,7 @@ function EventControls({
   event,
   demo,
   onboarding,
+  registration,
   busy,
   mutate,
   execute,
@@ -158,6 +162,7 @@ function EventControls({
   event: QuestEvent;
   demo: DemoContentState;
   onboarding: AttendanceState;
+  registration: RegistrationState;
   busy: boolean;
   mutate: Mutation;
   execute: Execute;
@@ -298,6 +303,20 @@ function EventControls({
           </p>
         )}
       </section>
+      <RegistrationControls
+        state={registration}
+        busy={busy}
+        onChange={(enabled) =>
+          mutate(
+            "/admin/registration",
+            "PATCH",
+            { enabled },
+            enabled
+              ? "Public registration opened"
+              : "Public registration closed",
+          )
+        }
+      />
       <DemoControls
         state={demo}
         busy={busy}

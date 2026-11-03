@@ -1191,3 +1191,178 @@ class QuestIntegration(unittest.TestCase):
             self.assertEqual(Users.query.filter(Users.type=="user",Users.team_id.isnot(None)).count(),21)
             self.assertEqual(Teams.query.filter_by(name="Team 06").count(),1)
             self.assertEqual(QuestReadiness.query.count(),21)
+
+    def test_registration_toggle_authorization_csrf_strict_body_and_audit(self):
+        endpoint = PREFIX + "/admin/registration"
+        with self.guest.session_transaction() as session:
+            session["nonce"] = "quest-test-csrf"
+        self.assertEqual(self.post(self.guest, endpoint, {"enabled": False}, "PATCH").status_code, 401)
+        self.assertEqual(self.post(self.alice, endpoint, {"enabled": False}, "PATCH").status_code, 403)
+        self.assertEqual(self.admin.patch(endpoint, json={"enabled": False}).status_code, 403)
+        for payload in ({}, {"enabled": "false"}, {"enabled": 0}, {"enabled": None}, {"enabled": False, "extra": True}):
+            self.assertEqual(self.post(self.admin, endpoint, payload, "PATCH").status_code, 400)
+        self.assertEqual(self.guest.get(PREFIX + "/bootstrap").json["data"]["registration"], {"enabled": True})
+        response = self.post(self.admin, endpoint, {"enabled": False}, "PATCH")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["data"], {"enabled": False})
+        self.assertEqual(self.admin.get(PREFIX + "/admin/state").json["data"]["registration"], {"enabled": False})
+        with self.app.app_context():
+            row = Configs.query.filter_by(key="registration_visibility").one()
+            self.assertEqual(row.value, "private")
+            audit = QuestAudit.query.filter_by(action="registration.configure").one()
+            self.assertEqual(audit.detail, {"old": "public", "new": "private"})
+            self.assertEqual(audit.actor_id, 1)
+
+    def test_registration_native_closed_form_and_stale_public_cache_are_blocked(self):
+        from CTFd.plugins.open_tech_quest.registration import invalidate
+        opened = self.guest.get("/register")
+        self.assertEqual(opened.status_code, 200)
+        self.assertIn("password", opened.get_data(as_text=True))
+        with self.guest.session_transaction() as session:
+            nonce = session["nonce"]
+        with self.app.app_context():
+            self.assertEqual(get_config("registration_visibility"), "public")
+        committed, release = threading.Event(), threading.Event()
+        def delay_invalidation():
+            committed.set()
+            if not release.wait(3):
+                raise RuntimeError("Registration cache invalidation gate was not released")
+            invalidate()
+        def close_registration():
+            return self.post(self.client(1), PREFIX + "/admin/registration", {"enabled": False}, "PATCH")
+        with patch("CTFd.plugins.open_tech_quest.registration.invalidate", side_effect=delay_invalidation):
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                closing = pool.submit(close_registration)
+                try:
+                    self.assertTrue(committed.wait(3))
+                    # Native cache is still public after the private DB value
+                    # committed; the authoritative guard must reject both paths.
+                    with self.app.app_context():
+                        self.assertEqual(get_config("registration_visibility"), "public")
+                    response = self.guest.get("/register")
+                    self.assertEqual(response.status_code, 403)
+                    self.assertIn("registration is closed", response.json["error"])
+                    posted = self.guest.post("/register", data={"nonce": nonce, "name": "Stale form user", "email": "stale@example.test", "password": "test-only"})
+                    self.assertEqual(posted.status_code, 403)
+                    self.assertIn("registration is closed", posted.json["error"])
+                    html = self.guest.post("/register", data={"nonce": nonce, "name": "HTML stale form user", "email": "html-stale@example.test", "password": "test-only"}, headers={"Accept": "text/html,application/xhtml+xml;q=0.9"})
+                    self.assertEqual(html.status_code, 403)
+                    self.assertEqual(html.mimetype, "text/html")
+                    self.assertIn("Public registration is closed", html.get_data(as_text=True))
+                    self.assertIn("/login", html.get_data(as_text=True))
+                    with self.app.app_context():
+                        self.assertEqual(Users.query.count(), 4)
+                finally:
+                    release.set()
+                self.assertEqual(closing.result().status_code, 200)
+        self.assertFalse(self.guest.get(PREFIX + "/bootstrap").json["data"]["registration"]["enabled"])
+
+    def test_registration_reopen_uses_native_account_creation_and_existing_ready_login(self):
+        self.open_onboarding()
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/registration", {"enabled": False}, "PATCH").status_code, 200)
+        existing = self.app.test_client()
+        self.assertEqual(existing.get("/login").status_code, 200)
+        with existing.session_transaction() as session:
+            nonce = session["nonce"]
+        response = existing.post("/login", data={"nonce": nonce, "name": "Alice", "password": "test-only"})
+        self.assertEqual(response.status_code, 302)
+        with existing.session_transaction() as session:
+            self.assertEqual(session["id"], 2)
+            existing_nonce = session["nonce"]
+        ready = existing.post(PREFIX + "/onboarding/ready", json={}, headers={"CSRF-Token": existing_nonce})
+        self.assertEqual(ready.status_code, 200, ready.get_data(as_text=True))
+        self.assertIsNotNone(ready.json["data"]["ready_at"])
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/registration", {"enabled": True}, "PATCH").status_code, 200)
+        self.assertEqual(self.guest.get("/register").status_code, 200)
+        with self.guest.session_transaction() as session:
+            nonce = session["nonce"]
+        created = self.guest.post("/register", data={"nonce": nonce, "name": "Native reopened user", "email": "native-reopened@example.test", "password": "test-only"})
+        self.assertEqual(created.status_code, 302, created.get_data(as_text=True))
+        with self.app.app_context():
+            user = Users.query.filter_by(email="native-reopened@example.test").one()
+            self.assertIsNone(user.team_id)
+            self.assertIsNone(QuestReadiness.query.get(user.id))
+            self.assertEqual(QuestStart.query.count(), 0)
+
+    def test_registration_state_persists_in_every_phase_without_startup_reset(self):
+        from CTFd.plugins.open_tech_quest.onboarding import initialize
+        from CTFd.plugins.open_tech_quest.registration import status
+        for phase in ("draft", "live", "paused", "closed", "published"):
+            with self.app.app_context():
+                QuestEvent.query.get(1).status = phase
+                db.session.commit()
+                get_config("registration_visibility")  # Warm the native cache.
+            response = self.post(self.admin, PREFIX + "/admin/registration", {"enabled": False}, "PATCH")
+            self.assertEqual(response.status_code, 200)
+            with self.app.app_context():
+                self.assertEqual(get_config("registration_visibility"), "private")
+                initialize(QuestEvent.query.get(1))
+                self.assertEqual(status(), {"enabled": False})
+                # A server-side native change remains the same source of truth.
+                set_config("registration_visibility", "public")
+                self.assertEqual(status(), {"enabled": True})
+            self.assertTrue(self.guest.get(PREFIX + "/bootstrap").json["data"]["registration"]["enabled"])
+        with self.app.app_context():
+            set_config("registration_visibility", "mlc")
+        self.assertFalse(self.guest.get(PREFIX + "/bootstrap").json["data"]["registration"]["enabled"])
+        self.assertEqual(self.guest.get("/register").status_code, 403)
+
+    def test_registration_native_http_config_writes_are_managed_but_reads_remain(self):
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/registration", {"enabled": False}, "PATCH").status_code, 200)
+        for path, method, payload in (
+            ("/api/v1/configs/registration_visibility", "PATCH", {"value": "public"}),
+            ("/api/v1/configs/registration_visibility", "DELETE", {}),
+            ("/api/v1/configs", "PATCH", {"ctf_name": "Should not change", "registration_visibility": "public"}),
+            ("/api/v1/configs", "POST", {"key": "registration_visibility", "value": "public"}),
+            ("/api/v1/configs/another_key", "PATCH", {"key": "registration_visibility", "value": "public"}),
+            ("/api/v1/configs/REGISTRATION_VISIBILITY", "PATCH", {"value": "public"}),
+            ("/api/v1/configs", "PATCH", {"REGISTRATION_VISIBILITY": "public"}),
+            ("/api/v1/configs", "POST", {"key": "REGISTRATION_VISIBILITY", "value": "public"}),
+            ("/api/v1/configs/another_key", "PATCH", {"key": "REGISTRATION_VISIBILITY", "value": "public"}),
+        ):
+            response = self.post(self.admin, path, payload, method)
+            self.assertEqual(response.status_code, 409, response.get_data(as_text=True))
+            self.assertIn("registration", response.json["error"])
+        legacy = self.admin.post("/admin/plugins/open_tech_quest", data={"nonce": "quest-test-csrf", "registration_visibility": "public"})
+        self.assertEqual(legacy.status_code, 409)
+        native = self.admin.get("/api/v1/configs/registration_visibility")
+        self.assertEqual(native.status_code, 200)
+        self.assertEqual(native.json["data"]["value"], "private")
+        with self.app.app_context():
+            self.assertEqual(get_config("ctf_name"), "Quest test")
+            self.assertEqual(Configs.query.filter_by(key="registration_visibility").count(), 1)
+        # Native administrator provisioning is not public self-registration.
+        response = self.post(self.admin, "/api/v1/users", {"name": "Provisioned user", "email": "provisioned@example.test", "password": "test-only"})
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+
+    def test_registration_close_waits_for_an_authorized_native_creation(self):
+        self.assertEqual(self.guest.get("/register").status_code, 200)
+        with self.guest.session_transaction() as session:
+            nonce = session["nonce"]
+        entered, release = threading.Event(), threading.Event()
+        original_init = Users.__init__
+        def gated_init(user, *args, **kwargs):
+            if kwargs.get("name") == "In-flight registrant":
+                entered.set()
+                if not release.wait(3):
+                    raise RuntimeError("Native registration gate was not released")
+            original_init(user, *args, **kwargs)
+        def register():
+            return self.guest.post("/register", data={"nonce": nonce, "name": "In-flight registrant", "email": "inflight@example.test", "password": "test-only"})
+        def close():
+            return self.post(self.client(1), PREFIX + "/admin/registration", {"enabled": False}, "PATCH")
+        with patch.object(Users, "__init__", gated_init):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                registering = pool.submit(register)
+                self.assertTrue(entered.wait(3))
+                closing = pool.submit(close)
+                time.sleep(0.1)
+                try:
+                    self.assertFalse(closing.done(), "Closing must serialize after the authorized native account transaction")
+                finally:
+                    release.set()
+                self.assertEqual(registering.result().status_code, 302)
+                self.assertEqual(closing.result().status_code, 200)
+        with self.app.app_context():
+            self.assertEqual(Users.query.filter_by(email="inflight@example.test").count(), 1)
+            self.assertEqual(get_config("registration_visibility"), "private")

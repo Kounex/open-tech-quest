@@ -20,7 +20,7 @@ from .models import (QuestEvent, QuestRoom, QuestStep, QuestStart, QuestPause,
 from .service import (event, event_data, now, iso, parse_time, released,
                       room_data, room_steps, standings, Projection)
 
-from . import demo, onboarding
+from . import demo, onboarding, registration
 
 api = Blueprint("quest_api", __name__)
 
@@ -160,7 +160,7 @@ def current_rooms():
 
 @api.route("/bootstrap")
 def bootstrap():
-    return success({"event": event_data(), "viewer": viewer(), "rooms": current_rooms()})
+    return success({"event": event_data(), "viewer": viewer(), "rooms": current_rooms(), "registration": registration.status()})
 
 
 @api.route("/session")
@@ -240,7 +240,7 @@ def admin_state():
                                       "late": bool(u.id in readiness and readiness[u.id].late),
                                       "banned": bool(u.banned)} for u in Users.query.filter_by(type="user").order_by(Users.id).all()],
                     "audit": [{"id": a.id, "actor_id": a.actor_id, "action": a.action, "detail": a.detail, "created_at": iso(a.created_at)} for a in QuestAudit.query.order_by(QuestAudit.id.desc()).limit(200).all()],
-                    "standings": standings(), "projector": event().projector, "demo": demo.status(event()), "onboarding": onboarding.summary(event())})
+                    "standings": standings(), "projector": event().projector, "demo": demo.status(event()), "onboarding": onboarding.summary(event()), "registration": registration.status()})
 
 
 @api.route("/admin/event", methods=["PATCH"])
@@ -790,3 +790,20 @@ def optimize_onboarding():
         clear_team_session(team.id)
     clear_standings()
     return success(onboarding.summary(e))
+
+
+@api.route("/admin/registration", methods=["PATCH"])
+@admin
+def configure_registration():
+    data = body()
+    event(lock=True)
+    if set(data) != {"enabled"}:
+        fail("Supply only enabled: true or false")
+    enabled = boolean(data["enabled"], "enabled")
+    previous = registration.visibility()
+    value = "public" if enabled else "private"
+    native_config(registration.KEY, value)
+    audit("registration.configure", {"old": previous, "new": value})
+    db.session.commit()
+    registration.invalidate()
+    return success(registration.status())

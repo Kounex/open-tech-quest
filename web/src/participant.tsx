@@ -38,8 +38,17 @@ export function EventNotice({ data }: { data: Bootstrap }) {
       {!viewer.authenticated ? (
         <Notice>
           <a href="/login?next=/quest">Sign in</a> with your own account to join
-          your team’s progress. New here?{" "}
-          <a href="/register?next=/quest">Register</a>
+          your team’s progress.{" "}
+          {data.registration?.enabled ? (
+            <>
+              New here? <a href="/register?next=/quest">Register</a>
+            </>
+          ) : (
+            <>
+              Public registration is closed. Existing participants can still
+              sign in.
+            </>
+          )}
         </Notice>
       ) : !viewer.team_id && !viewer.admin ? (
         <Notice>

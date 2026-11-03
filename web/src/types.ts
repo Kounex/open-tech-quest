@@ -50,7 +50,11 @@ export interface Room {
   steps: Step[];
   progress: Progress;
 }
+export interface RegistrationState {
+  enabled: boolean;
+}
 export interface Bootstrap {
+  registration: RegistrationState;
   event: QuestEvent;
   viewer: Viewer;
   rooms: Room[];
@@ -100,6 +104,7 @@ export interface Participant {
   banned: boolean;
 }
 export interface AdminState {
+  registration: RegistrationState;
   onboarding: AttendanceState;
   demo: DemoContentState;
   event: QuestEvent;
