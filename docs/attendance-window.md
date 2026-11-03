@@ -69,6 +69,9 @@ Reason explains why opening is unavailable; it is null when opening is allowed.
 - Admin state's `onboarding` gains the same `attendance` field.
 - PATCH `/admin/attendance` accepts exactly `{enabled:boolean}`, requires the
   existing administrator session and CSRF, and returns AttendanceWindow.
+- Bootstrap returns the current session’s `csrfNonce` with its viewer and uses
+  `Cache-Control: private, no-store`. Apply both only from the accepted bootstrap
+  response before interaction, including after native logout/login in another tab.
 - No new public participant details or administrator tokens are exposed.
 
 Use one shared authenticated-participant onboarding resource in the SPA, polling
@@ -116,3 +119,18 @@ and fresh install on SQLite/MariaDB. Native-page notice must not interrupt edits
 Run changed tests during implementation, full required gates once before release.
 Production rollout leaves attendance off and registration in its current state;
 validation is read-only, with no production users or confirmations seeded.
+
+## Isolated browser acceptance
+
+Verified an actual 0.1.10 SQLite upgrade with accounts and native sessions
+preserved. Tested early registration with capture off; registration while open;
+automatic prompts on Standings and Stage; background-tab activation; dismissal
+and reopening; confirmation across two devices; closing against a deliberately
+stale form; and native account switching without a full-page reload. Native
+account notices preserved an unsaved settings edit. Existing confirmations kept
+their timestamps and capture never started competition clocks.
+
+Organizer and mobile-dialog WCAG A/AA scans reported no violations. The scanner
+could not automatically determine one dialog paragraph’s background because of
+the underlying Stage overlap; its rendered dark text on white was inspected.
+The mobile dialog fit a 390px viewport without horizontal scrolling.
