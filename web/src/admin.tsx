@@ -324,7 +324,7 @@ function EventControls({
               name="name"
               defaultValue={event.name}
               required
-              maxLength={200}
+              maxLength={128}
             />
           </label>
           <fieldset disabled={!draft || busy} className="form-grid">
@@ -675,7 +675,7 @@ function TeamsControls({
               <input
                 type="number"
                 min={1}
-                max={100}
+                max={50}
                 value={size}
                 onChange={(e) => {
                   setSize(Number(e.target.value));
@@ -685,7 +685,13 @@ function TeamsControls({
             </label>
             <button
               className="button secondary"
-              disabled={busy || previewBusy || size < 1}
+              disabled={
+                busy ||
+                previewBusy ||
+                size < 1 ||
+                size > 50 ||
+                !Number.isInteger(size)
+              }
               onClick={async () => {
                 setPreviewBusy(true);
                 setPreviewError("");
@@ -773,7 +779,9 @@ function TeamsControls({
           <p>
             {draft
               ? "Rename teams and adjust membership before the event starts."
-              : "Membership is fixed. Team names and reasoned prize exclusions remain editable."}
+              : data.event.status === "published"
+                ? "Published results are locked. Unpublish explicitly before changing prize eligibility."
+                : "Team names and membership are fixed. Prize exclusions remain editable with an organizer reason until publication."}
           </p>
         </div>
         <label className="search-label">
@@ -821,8 +829,16 @@ function TeamForm({
   execute: Execute;
 }) {
   const [excluded, setExcluded] = useState(team.excluded),
-    [members, setMembers] = useState(team.user_ids.map(String));
+    [members, setMembers] = useState(team.user_ids.map(String)),
+    [name, setName] = useState(team.name);
   const draft = data.event.status === "draft";
+  const published = data.event.status === "published";
+  const membersChanged =
+    members.length !== team.user_ids.length ||
+    members.some((id) => !team.user_ids.includes(Number(id)));
+  const changed =
+    (draft && (name !== team.name || membersChanged)) ||
+    excluded !== team.excluded;
   return (
     <details className="team-editor">
       <summary>
@@ -840,10 +856,13 @@ function TeamForm({
             `/admin/teams/${team.id}`,
             "PATCH",
             {
-              name: text(f, "name"),
-              excluded,
-              reason: text(f, "reason"),
-              ...(draft ? { user_ids: members.map(Number) } : {}),
+              ...(draft && name !== team.name ? { name } : {}),
+              ...(excluded !== team.excluded
+                ? { excluded, reason: text(f, "reason") }
+                : {}),
+              ...(draft && membersChanged
+                ? { user_ids: members.map(Number) }
+                : {}),
             },
             "Team saved",
           );
@@ -852,12 +871,23 @@ function TeamForm({
         <div className="form-grid">
           <label className="field">
             <span>Team name</span>
-            <input name="name" required defaultValue={team.name} />
+            <input
+              name="name"
+              required
+              maxLength={128}
+              disabled={!draft || busy}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            {!draft && (
+              <small>Team names are fixed after the event opens</small>
+            )}
           </label>
           <label className="checkbox-field">
             <input
               type="checkbox"
               checked={excluded}
+              disabled={published || busy}
               onChange={(e) => setExcluded(e.target.checked)}
             />
             Exclude from prizes and public standings
@@ -903,10 +933,11 @@ function TeamForm({
           <input
             name="reason"
             required={excluded !== team.excluded}
+            disabled={published || busy}
             placeholder="Required when changing exclusion"
           />
         </label>
-        <button className="button" disabled={busy}>
+        <button className="button" disabled={busy || published || !changed}>
           Save team
         </button>
       </form>
