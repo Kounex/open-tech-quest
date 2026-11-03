@@ -569,7 +569,8 @@ function OptimizeReview({ data, busy, mutate }: Props) {
           {plan.unassigned_user_ids.length > 0 && (
             <details className="optimization-details">
               <summary>
-                Assignments being cleared ({plan.unassigned_user_ids.length})
+                Accounts outside final groups ({plan.unassigned_user_ids.length}
+                )
               </summary>
               <p>{plan.unassigned_user_ids.map(name).join(", ")}</p>
               <p className="meta">
