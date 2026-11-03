@@ -477,8 +477,10 @@ def configure_team(team_id):
     if e.status == "published":
         fail("Unpublish results before changing teams", 409)
     if "name" in data:
-        draft(e)
-        team.name = unique_name(data["name"], team.id)
+        name = text(data["name"], "Team name", 128)
+        if name != team.name:
+            draft(e)
+            team.name = unique_name(name, team.id)
     changed_users = set()
     if "user_ids" in data:
         draft(e)
@@ -495,15 +497,13 @@ def configure_team(team_id):
         team.captain_id = ids[0] if ids else None
     if "excluded" in data:
         excluded = boolean(data["excluded"], "excluded")
-        explanation = reason(data)
         row = QuestExclusion.query.get(team.id)
-        if excluded:
-            if row:
-                row.reason = explanation
-            else:
+        if excluded != (row is not None):
+            explanation = reason(data)
+            if excluded:
                 db.session.add(QuestExclusion(team_id=team.id, reason=explanation))
-        elif row:
-            db.session.delete(row)
+            else:
+                db.session.delete(row)
     audit("team.configure", {"team_id": team.id, "changes": data})
     db.session.commit()
     for uid in changed_users:

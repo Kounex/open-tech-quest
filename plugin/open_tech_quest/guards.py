@@ -1,7 +1,7 @@
 """Guard native content paths as well as the SPA; known URLs grant no access."""
 import re
 from flask import jsonify, redirect, request
-from CTFd.models import Challenges, Files, Hints, Solutions, Teams, Users
+from CTFd.models import Challenges, Files, Hints, Solutions, Submissions, Teams, Users
 from CTFd.utils.dates import ctftime
 from CTFd.utils.user import get_current_user, is_admin
 from CTFd.utils.security.signing import unserialize, BadSignature, BadTimeSignature, SignatureExpired
@@ -23,6 +23,10 @@ def install_guards(app):
         data = data if isinstance(data, dict) or hasattr(data, "get") else {}
         if path == "/":
             return redirect("/quest")
+        if path == "/team":
+            user = get_current_user()
+            if user and not user.team_id:
+                return redirect("/quest")
         if path == "/setup" and request.method == "POST":
             # The plugin is team-based even when the upstream wizard defaults
             # its account-mode radio button to individual users.
@@ -40,11 +44,25 @@ def install_guards(app):
                     return denied("Manage team mode and event clocks through Open Tech Quest", 409)
             if match and write:
                 mapped = QuestStep.query.filter_by(challenge_id=int(match[1])).first()
-                if mapped and (request.method == "DELETE" or any(k in data for k in ("requirements", "next_id", "position"))):
-                    return denied("Manage mapped challenge topology through Open Tech Quest room settings", 409)
-            if write and (path.startswith("/api/v1/teams") or (path.startswith("/api/v1/users/") and "team_id" in data)):
-                if event().status != "draft":
-                    return denied("Team membership and identity are locked after draft", 409)
+                if mapped:
+                    challenge = Challenges.query.get(int(match[1]))
+                    changed = "requirements" in data and data["requirements"] != challenge.requirements
+                    # Native edit forms serialize numeric values as strings and
+                    # always send position, even when only description changed.
+                    changed = changed or any(k in data and str(data[k]) != str(getattr(challenge, k)) for k in ("next_id", "position"))
+                    if request.method == "DELETE" or changed:
+                        return denied("Manage mapped challenge topology through Open Tech Quest room settings", 409)
+            membership_write = path.startswith("/api/v1/teams") or (
+                path.startswith("/api/v1/users/") and ("team_id" in data or request.method == "DELETE")
+            )
+            if write and membership_write and event().status != "draft":
+                return denied("Team membership and identity are locked after draft", 409)
+            if write and path.startswith("/api/v1/submissions") and event().status != "draft":
+                submission_match = re.fullmatch(r"/api/v1/submissions/(\d+)", path)
+                submission = Submissions.query.get(int(submission_match[1])) if submission_match else None
+                challenge_id = submission.challenge_id if submission else data.get("challenge_id")
+                if str(challenge_id).isdigit() and QuestStep.query.filter_by(challenge_id=int(challenge_id)).first():
+                    return denied("Native event submissions are preserved. Use audited quest corrections.", 409)
             return
         if path in ("/", "/challenges", "/scoreboard"):
             return redirect("/quest/standings" if path == "/scoreboard" else "/quest")

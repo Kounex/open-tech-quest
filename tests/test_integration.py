@@ -396,3 +396,53 @@ class QuestIntegration(unittest.TestCase):
         durations = sorted(duration for _, duration, _ in results)
         print(f"50-team isolated projection: 50 requests / concurrency 10; p95={durations[47]:.3f}s; max={durations[-1]:.3f}s")
         self.assertLess(durations[47], 5.0)
+
+    def test_team_form_noop_fields_allow_draft_save_and_live_exclusion(self):
+        endpoint = PREFIX + f"/admin/teams/{self.team_id}"
+        result = self.post(self.admin, endpoint, {"name": "Renamed team", "excluded": False, "reason": "", "user_ids": [2, 3]}, "PATCH")
+        self.assertEqual(result.status_code, 200, result.get_data(as_text=True))
+        self.action("start")
+        payload = {"name": "Renamed team", "excluded": True, "reason": "Staff team"}
+        result = self.post(self.admin, endpoint, payload, "PATCH")
+        self.assertEqual(result.status_code, 200, result.get_data(as_text=True))
+        self.assertTrue(result.json["data"]["excluded"])
+        self.assertEqual(self.post(self.admin, endpoint, dict(payload, reason=""), "PATCH").status_code, 200)
+        self.assertEqual(self.post(self.admin, endpoint, dict(payload, excluded=False, reason=""), "PATCH").status_code, 400)
+        self.assertEqual(self.post(self.admin, endpoint, dict(payload, name="Another name"), "PATCH").status_code, 409)
+
+    def test_native_admin_cannot_destroy_membership_or_solve_history(self):
+        self.action("start")
+        self.start()
+        self.assertEqual(self.solve(self.alice, 1).json["data"]["status"], "correct")
+        with self.app.app_context():
+            solve_id = Solves.query.one().id
+        for path, payload, method in (
+            ("/api/v1/users/2", {}, "DELETE"),
+            (f"/api/v1/submissions/{solve_id}", {}, "DELETE"),
+            (f"/api/v1/submissions/{solve_id}", {"type": "incorrect"}, "PATCH"),
+            ("/api/v1/submissions", {"type": "correct", "challenge_id": 2, "team_id": self.team_id, "user_id": 2}, "POST"),
+        ):
+            response = self.post(self.admin, path, payload, method)
+            self.assertEqual(response.status_code, 409, response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Solves.query.count(), 1)
+            self.assertIsNotNone(Users.query.get(2))
+            self.assertEqual(next(t for t in standings()["teams"] if t["id"] == self.team_id)["total"], 1)
+
+    def test_native_authoring_accepts_unchanged_position_without_topology_bypass(self):
+        self.action("start")
+        result = self.post(self.admin, "/api/v1/challenges/1", {"name": "Edited native challenge", "description": "Updated native instructions", "position": "0"}, "PATCH")
+        self.assertEqual(result.status_code, 200, result.get_data(as_text=True))
+        self.assertEqual(self.post(self.admin, "/api/v1/challenges/1", {"position": "9"}, "PATCH").status_code, 409)
+        with self.app.app_context():
+            challenge = Challenges.query.get(1)
+            self.assertEqual(challenge.description, "Updated native instructions")
+            self.assertEqual(challenge.position, 0)
+            self.assertEqual(challenge.next_id, 2)
+
+    def test_native_login_landing_for_unassigned_users_and_organizers(self):
+        self.assertEqual(self.admin.get("/team?next=%2Fchallenges").location, "/quest")
+        result = self.post(self.admin, PREFIX + f"/admin/teams/{self.team_id}", {"user_ids": [2]}, "PATCH")
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(self.bob.get("/team?next=%2Fchallenges").location, "/quest")
+        self.assertNotEqual(self.alice.get("/team").location, "/quest")
