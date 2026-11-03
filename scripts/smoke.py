@@ -12,7 +12,7 @@ for attempt in range(90):
         with urlopen(base + "/api/v1/quest/bootstrap", timeout=3) as response:
             bootstrap = json.load(response)
         break
-    except (URLError, TimeoutError):
+    except (URLError, TimeoutError, ConnectionError):
         time.sleep(1)
 else:
     raise SystemExit("Quest did not become ready within 90 attempts")
