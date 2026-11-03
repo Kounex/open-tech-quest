@@ -516,7 +516,7 @@ function ChallengePanel({
       {!challenge && !content.error && <p role="status">Loading challenge…</p>}
       {challenge && (
         <>
-          <Markdown source={challenge.description} />
+          <Markdown source={challenge.description} omitTitle={challenge.name} />
           {challenge.connection_info && (
             <div className="connection-info">
               <span className="meta">Connection</span>

@@ -99,29 +99,47 @@ export function Empty({
     </div>
   );
 }
-export function Markdown({ source }: { source: string }) {
-  return (
-    <div
-      className="prose"
-      dangerouslySetInnerHTML={{
-        __html: DOMPurify.sanitize(
-          marked.parse(source, { async: false }) as string,
-          {
-            ADD_ATTR: ["target"],
-            FORBID_TAGS: [
-              "form",
-              "input",
-              "button",
-              "style",
-              "iframe",
-              "object",
-              "embed",
-            ],
-          },
-        ),
-      }}
-    />
+export function Markdown({
+  source,
+  omitTitle,
+}: {
+  source: string;
+  omitTitle?: string;
+}) {
+  let html = DOMPurify.sanitize(
+    marked.parse(source, { async: false }) as string,
+    {
+      ADD_ATTR: ["target"],
+      FORBID_TAGS: [
+        "form",
+        "input",
+        "button",
+        "style",
+        "iframe",
+        "object",
+        "embed",
+      ],
+    },
   );
+  if (omitTitle) {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const heading = template.content.firstElementChild;
+    const normalize = (value: string) =>
+      value
+        .trim()
+        .replace(/^demo(?:\s+task)?:\s*/i, "")
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+    if (
+      heading?.matches("h1, h2, h3, h4, h5, h6") &&
+      normalize(heading.textContent || "") === normalize(omitTitle)
+    ) {
+      heading.remove();
+      html = template.innerHTML;
+    }
+  }
+  return <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 export function Confirm({
   label,
