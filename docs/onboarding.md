@@ -33,7 +33,9 @@ Ready is personal, timestamped, idempotent and survives membership moves. It can
 also be recorded after check-in closes, appearing as a late arrival; before apply
 this invalidates any older preview. After apply, unassigned late arrivals appear
 in an organizer queue and may be placed manually with a reason, before finalizing,
-within capacity. Reopening closed check-in is allowed before apply. After apply,
+within capacity. If all groups are full, a reasoned create-late-team action
+creates an additional placeholder team for ready unassigned arrivals without
+reshuffling any existing group. Reopening closed check-in is allowed before apply. After apply,
 no automatic rebalance is offered, because names belong to the final groups.
 No self-service native team create/join/invite/rename or native admin mutation may
 bypass this lifecycle. Native password/account settings remain usable. Own-team
@@ -57,6 +59,8 @@ All existing envelopes/authentication/CSRF rules apply. New fields are additive.
   `banned`; teams gain `name_locked`, `ready_count` (all existing fields retained).
 - PATCH `/admin/onboarding`: `{team_size}` persisted before naming/finalized.
 - POST `/admin/onboarding/action`: `{action:close_checkin|reopen_checkin|finalize}`.
+  Naming also supports `{action:create_late_team,user_ids:[...],reason}` for
+  capacity-limited groups of ready unassigned late arrivals.
   Finalize checks ready assigned members, capacity, names, no unresolved ready
   queue. Non-ready accounts remain outside teams after optimization.
 - POST `/admin/onboarding/optimize`: `{preview:true}` =>

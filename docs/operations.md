@@ -58,7 +58,8 @@ released team's names and check-in state; emails stay organizer-only.
    choice wins, including simultaneous requests from different devices.
 5. Late arrivals can still confirm attendance. After optimization they enter the
    unassigned ready queue; add them manually to a team with free capacity and an
-   organizer reason before finalization. Automatic reshuffling is closed during
+   organizer reason before finalization. If all groups are full, create an
+   additional team from the late-arrival queue. Automatic reshuffling is closed during
    naming. Organizer name corrections also need a reason and are audited.
 6. **Finalize rosters** when everyone ready is assigned and each active team has
    chosen a name. Membership stays fixed from this point. Start the competition

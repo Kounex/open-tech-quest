@@ -13,6 +13,8 @@ without maintaining a fork of CTFd's core.
 - Five individually themed rooms: OpenShift, Ansible, RHEL, Security and AI.
 - An ordered challenge path per room, enforced at API and attachment access.
 - One account per person, with shared team starts and solves across devices.
+- Personal check-in, configurable team size, attendance-based roster optimization
+  and one-time team naming, with reviewed changes before finalization.
 - Persistent server-side clocks, organizer pauses and closing cutoffs.
 - Room prizes by progress then elapsed time; overall prizes by distinct solves
   then elapsed event time. Genuine ties retain the same rank.
@@ -44,8 +46,10 @@ rooms in the required order. Room settings keep CTFd Requirements and next
 challenge links consistent. Configure prize timing and teams before starting.
 
 Native self-service team joining is replaced by organizer allocation. After
-registration, participants wait in the quest lobby for their assignment.
-Team names and membership become fixed when the event opens.
+registration, participants confirm attendance in the quest lobby. Organizers
+allocate provisional teams, optimize confirmed attendance, then open final naming.
+Any member can claim the unique team name once. Rosters are finalized before
+competition start. See the [onboarding contract](docs/onboarding.md).
 
 ## Development and verification
 

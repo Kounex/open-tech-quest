@@ -3,7 +3,7 @@
 import json
 import sys
 import time
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 base = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000").rstrip("/")
@@ -22,6 +22,15 @@ data = bootstrap["data"]
 assert data["event"]["status"] == "draft", data["event"]
 assert len(data["rooms"]) == 5, data["rooms"]
 assert all(not room["steps"] for room in data["rooms"]), "Unexpected seeded challenges"
+# A real empty installation must not expose attendance or participant details.
+for private_route in ("/api/v1/quest/onboarding", "/api/v1/quest/admin/state"):
+    try:
+        urlopen(base + private_route, timeout=5)
+    except HTTPError as exc:
+        assert exc.code == 401, (private_route, exc.code)
+        assert json.load(exc)["success"] is False
+    else:
+        raise AssertionError("Unauthenticated roster access: " + private_route)
 for route in ("/", "/quest", "/quest/standings", "/quest/stage", "/login"):
     with urlopen(base + route, timeout=5) as response:
         assert response.status == 200, route
@@ -29,4 +38,4 @@ for route in ("/", "/quest", "/quest/standings", "/quest/stage", "/login"):
 for asset in ("quest.js", "quest.css"):
     with urlopen(base + "/plugins/open_tech_quest/assets/app/" + asset, timeout=5) as response:
         assert response.status == 200 and response.read(1), asset
-print("Runtime smoke passed: shell, assets, draft event, five empty rooms")
+print("Runtime smoke passed: shell, assets, draft event, five empty rooms, private roster access")
