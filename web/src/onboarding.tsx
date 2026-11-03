@@ -233,7 +233,7 @@ function PersonalOnboarding({
           ) : team.name_locked ? (
             <p className="meta roster-explanation">
               {state.phase === "finalized"
-                ? "Your roster and team name are finalized. The rooms open when the organizers start the event."
+                ? "Your roster and team name are finalized. Your team shares progress across devices."
                 : "Your team's name is fixed. Organizers will finalize the rosters before opening the rooms."}
             </p>
           ) : null}
