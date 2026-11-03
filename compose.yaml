@@ -1,0 +1,23 @@
+# Disposable local development only. Run ./scripts/dev.sh to initialize a key.
+services:
+  quest:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      SECRET_KEY: "${SECRET_KEY:?Run ./scripts/dev.sh or set a local SECRET_KEY}"
+      DATABASE_URL: sqlite:////opt/CTFd/data/ctfd.db
+      WORKERS: "1"
+      REVERSE_PROXY: "false"
+      UPLOAD_FOLDER: /var/uploads
+      LOG_FOLDER: /var/log/CTFd
+    volumes:
+      - quest-data:/opt/CTFd/data
+      - quest-uploads:/var/uploads
+      - quest-logs:/var/log/CTFd
+volumes:
+  quest-data:
+  quest-uploads:
+  quest-logs:

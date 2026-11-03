@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend check and production build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: docker build --target frontend .
+
+  backend:
+    name: Backend (${{ matrix.database }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, mariadb]
+    services:
+      mariadb:
+        image: mariadb:10.11.19@sha256:d769e37960821dfdcf096954f6e7ac89f747e116c1bba98e48edd265dfc7deae
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-ci-root
+          MARIADB_DATABASE: quest_test
+          MARIADB_USER: quest
+          MARIADB_PASSWORD: disposable-ci-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: docker build --target test-runner --tag quest-tests .
+      - name: Run backend integration suite
+        env:
+          TEST_DATABASE: ${{ matrix.database }}
+        run: |
+          if [ "$TEST_DATABASE" = mariadb ]; then
+            export DATABASE_URL='mysql+pymysql://quest:disposable-ci-only@127.0.0.1:3306/quest_test'
+          fi
+          docker run --rm --network host --env DATABASE_URL --entrypoint python quest-tests \
+            -m unittest discover -s /opt/quest-tests -p 'test_*.py' -v
+
+  smoke:
+    name: Runtime startup and empty-install smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: docker build --target runtime --tag quest-smoke .
+      - name: Start with a disposable local database
+        run: |
+          export SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+          docker volume create quest-smoke-data
+          docker run --rm --volume quest-smoke-data:/opt/CTFd/data \
+            --env SECRET_KEY --env DATABASE_URL=sqlite:////opt/CTFd/data/smoke.db \
+            --entrypoint python quest-smoke -c 'from CTFd import create_app; from CTFd.utils import set_config; app = create_app(); app.app_context().push(); set_config("setup", True)'
+          docker run --detach --name quest-smoke --publish 127.0.0.1:8000:8000 \
+            --volume quest-smoke-data:/opt/CTFd/data \
+            --env SECRET_KEY --env DATABASE_URL=sqlite:////opt/CTFd/data/smoke.db quest-smoke
+          python3 scripts/smoke.py
+      - name: Runtime logs
+        if: failure()
+        run: docker logs quest-smoke
+      - name: Remove disposable container
+        if: always()
+        run: |
+          docker rm --force quest-smoke || true
+          docker volume rm quest-smoke-data || true
