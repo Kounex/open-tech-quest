@@ -7,6 +7,8 @@ body:has(main input#password) {
   color: #202027 !important;
   --bs-body-bg: #f6f6f8;
   --bs-body-color: #202027;
+  /* Authentication surfaces stay light even when CTFd selects its dark theme. */
+  --bs-secondary-color: #60606a;
   --bs-link-color: #006a77;
   --bs-border-color: #dddde3;
 }
