@@ -25,14 +25,52 @@
    prize clock origins. The UI uses the organizer's browser local timezone;
    persistence and API timestamps use UTC. Leaving roster release empty
    publishes assignments immediately, so set it before assigning if needed.
-6. Register participants, then preview and commit random balanced allocation.
-   Existing teams are preserved. Adjust names and memberships in draft;
-   explain the shared room clock and prize rules to the teams.
+6. Ask participants to register their own account through **Register**. In
+   **Teams**, set the maximum team size (default five), preview random allocation,
+   then apply it. These are provisional groups. Set roster release beforehand if
+   assignments should remain hidden until a specific time. Each person logs in
+   and clicks **I'm ready to quest**; this records attendance without starting
+   room or event timers. Follow the attendance workflow below before opening.
 7. Open `/quest/stage` on the projector. Choose overview, room, overall or
    awards from the organizer Projector tab. Verify 1080p output and long team
    names on the actual beamer; full-screen overview uses two panels of 25.
 8. Configure SMTP before relying on password reset/email verification. It is
    an event deployment setting; no mail credentials belong in this repo.
+
+## Attendance and final teams
+
+The **Teams** organizer view shows participant names, email, attendance and team
+membership, with search and status filters. Participants see only their own
+released team's names and check-in state; emails stay organizer-only.
+
+1. Leave check-in open while arrivals confirm readiness. Allocate the pool into
+   random provisional groups. Unconfirmed people remain visible as pending.
+2. **Close check-in**, then **Preview team optimization**. Only confirmed,
+   eligible participants enter the proposal. Inspect team sizes, individual
+   moves, no-show removals and any unavoidable small-team warning. Capacity is a
+   hard maximum; the optimizer tries to keep existing groups and avoid a tiny
+   last team. With size five, 21 attendees become 5/4/4/4/4.
+3. **Apply** the reviewed plan. A changed attendance list, membership or setting
+   makes the preview stale and requires a new preview. Accounts are never deleted
+   when no-shows are removed from teams. Check-in can be reopened before applying.
+4. The roster enters **naming**. Any ready member chooses the team's permanent,
+   unique name after a confirmation that explains the lock. The first confirmed
+   choice wins, including simultaneous requests from different devices.
+5. Late arrivals can still confirm attendance. After optimization they enter the
+   unassigned ready queue; add them manually to a team with free capacity and an
+   organizer reason before finalization. Automatic reshuffling is closed during
+   naming. Organizer name corrections also need a reason and are audited.
+6. **Finalize rosters** when everyone ready is assigned and each active team has
+   chosen a name. Membership stays fixed from this point. Start the competition
+   separately in **Event**, after removing any loaded demo and authoring the real
+   room challenges. Participants still use **Start room** for each room clock.
+
+Changing the maximum team size is allowed before naming. No participant can
+create, join, invite, disband or rename a team through native CTFd routes to bypass
+allocation. Registering after finalization creates an unassigned account; it
+does not silently change the competing roster. There is no participant import,
+automatically generated password or invitation email in this workflow. Configure
+CTFd SMTP if you need native password reset or email verification.
 
 ## Preview with demo content
 
