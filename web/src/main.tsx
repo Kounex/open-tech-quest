@@ -133,7 +133,7 @@ function App() {
         <img src={`${branding}/redhat-on-light.svg`} alt="Red Hat" />
         <span>Open Tech Quest · Learn together. Solve together.</span>
         <a href="/settings">Account settings</a>
-        {data?.viewer.authenticated && <a href="/team">Your team</a>}
+        {data?.viewer.team_id && <a href="/team">Your team</a>}
       </footer>
     </>
   );
