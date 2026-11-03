@@ -8,26 +8,39 @@ export function roomThemeStyle(room: Room): CSSProperties {
       : "#008b9a",
   } as CSSProperties;
 }
-const artwork: Record<string, { scene: string; alt: string }> = {
+const artwork: Record<
+  string,
+  { scene: string; product: string; topic: string; alt: string }
+> = {
   openshift: {
     scene: "openshift",
-    alt: "An illustrated deployment workshop with connected server bays and a service gateway",
+    product: "Red Hat OpenShift",
+    topic: "Container orchestration",
+    alt: "Application deployment branching into groups of container workloads on a red platform",
   },
   ansible: {
     scene: "ansible",
-    alt: "An illustrated automation control room coordinating connected workstations",
+    product: "Red Hat Ansible",
+    topic: "Playbook automation",
+    alt: "An automation playbook coordinating server, laptop and network endpoints",
   },
   rhel: {
     scene: "rhel",
-    alt: "An illustrated Linux engine room with server racks and a maintenance bench",
+    product: "Red Hat Enterprise Linux",
+    topic: "Linux systems and services",
+    alt: "A Linux terminal and running services on a red operating-system foundation",
   },
   security: {
     scene: "security",
-    alt: "An illustrated security operations room with verification stations and a protected gateway",
+    product: "Security",
+    topic: "Protect cloud-native workloads",
+    alt: "A red shield protecting container workloads and a verified software-package chain",
   },
   ai: {
     scene: "ai",
-    alt: "An illustrated AI research lab connecting data preparation, compute and evaluation",
+    product: "Red Hat AI",
+    topic: "Models and inference",
+    alt: "Data flowing through a model processor into an inference response",
   },
 };
 const artBase = "/plugins/open_tech_quest/assets/branding/room-art";
@@ -41,10 +54,11 @@ export function RoomArt({
   const customHero = assetUrl(room.theme?.hero_url);
   const key = (room.theme?.layout || room.slug).toLowerCase();
   const art = artwork[key];
+  const identity = artwork[room.slug.toLowerCase()] || art;
   const hero = customHero || (art && `${artBase}/${art.scene}-hero.webp`);
   return (
     <div
-      className={`room-art art-${key}${compact ? " compact" : ""}`}
+      className={`room-art art-${key}${compact ? " compact" : ""}${!customHero && art ? " has-bundled-art" : ""}`}
       style={roomThemeStyle(room)}
     >
       {hero ? (
@@ -72,6 +86,15 @@ export function RoomArt({
         <div className="custom-art">
           <span>{room.name}</span>
           <p>{room.subtitle || "A new path for your team"}</p>
+        </div>
+      )}
+      {!customHero && art && (
+        <div className="room-art-identity" aria-hidden="true">
+          <RoomLogo room={room} />
+          <div>
+            <span className="product-name">{identity.product}</span>
+            <span className="product-topic">{identity.topic}</span>
+          </div>
         </div>
       )}
     </div>

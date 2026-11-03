@@ -60,74 +60,84 @@
       "note": "Original image extracted from slide 5 layout, supplied by organizer for this event; no private slide text or notes included."
     },
     "room-art/ai-card.webp": {
-      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "source": "Original OpenAI image generation in Codex, 2026-11-03; revision 2; transparent_background=true",
       "prompt": "room-art/prompts.json#ai",
       "license": "MIT",
-      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
-      "sha256": "423f77efe469ad95fc94f15a80f2984042f6b975b9214f03dc4aba9c4f1e3ad0"
+      "note": "Transparent product-topic event illustration. Exact official product icons and names are rendered separately in HTML.",
+      "sha256": "8619cfb0d1720faf831fe72ea6ece69c04c2bd2185568ba25bf3fc88db6ab51e",
+      "transparent": true
     },
     "room-art/ai-hero.webp": {
-      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "source": "Original OpenAI image generation in Codex, 2026-11-03; revision 2; transparent_background=true",
       "prompt": "room-art/prompts.json#ai",
       "license": "MIT",
-      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
-      "sha256": "55e503cd5ddb19b4de3ef20782af59cfd56c6b1d410b70281723db5f9f1805cb"
+      "note": "Transparent product-topic event illustration. Exact official product icons and names are rendered separately in HTML.",
+      "sha256": "8d713d16d2f08809b8dae0a9de4d415e8e7f9b1e4a00df1302ae946133f4aa9f",
+      "transparent": true
     },
     "room-art/ansible-card.webp": {
-      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "source": "Original OpenAI image generation in Codex, 2026-11-03; revision 2; transparent_background=true",
       "prompt": "room-art/prompts.json#ansible",
       "license": "MIT",
-      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
-      "sha256": "5fbb488a116537a44e82c450d5aeb4e5f79a2eb350b377c4485c2dffce5d9567"
+      "note": "Transparent product-topic event illustration. Exact official product icons and names are rendered separately in HTML.",
+      "sha256": "6830ad9cf13fd604f723f79aa16a4946a4f0cf877577804b67d508312e854a4b",
+      "transparent": true
     },
     "room-art/ansible-hero.webp": {
-      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "source": "Original OpenAI image generation in Codex, 2026-11-03; revision 2; transparent_background=true",
       "prompt": "room-art/prompts.json#ansible",
       "license": "MIT",
-      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
-      "sha256": "5485fcb22468280a06e244904f22d634184f36ed87e92d70ce720fdfdd19de40"
+      "note": "Transparent product-topic event illustration. Exact official product icons and names are rendered separately in HTML.",
+      "sha256": "729ea26b1605db71c2fcbbd76f64d4b6c0a77cead5f8ce8ac6977c9ae62ac0a0",
+      "transparent": true
     },
     "room-art/openshift-card.webp": {
-      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "source": "Original OpenAI image generation in Codex, 2026-11-03; revision 2; transparent_background=true",
       "prompt": "room-art/prompts.json#openshift",
       "license": "MIT",
-      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
-      "sha256": "1ddabe962cf3644c45c20ed69e0b9f214591595e1049c7798fb6690642a97514"
+      "note": "Transparent product-topic event illustration. Exact official product icons and names are rendered separately in HTML.",
+      "sha256": "1867e7e1bd9d85be4e9a5a85439815eb6f1d0cd1f500071d884647f4e872c2c3",
+      "transparent": true
     },
     "room-art/openshift-hero.webp": {
-      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "source": "Original OpenAI image generation in Codex, 2026-11-03; revision 2; transparent_background=true",
       "prompt": "room-art/prompts.json#openshift",
       "license": "MIT",
-      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
-      "sha256": "150ae5f5d83389731b82ed5bb7e551d96c870c35cd208b2d7a31fcf1016a5f3e"
+      "note": "Transparent product-topic event illustration. Exact official product icons and names are rendered separately in HTML.",
+      "sha256": "c480e4fdf6cb1a0d65a5e86ac6ff64f9aabeaad091ad85f95237515458211786",
+      "transparent": true
     },
     "room-art/rhel-card.webp": {
-      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "source": "Original OpenAI image generation in Codex, 2026-11-03; revision 2; transparent_background=true",
       "prompt": "room-art/prompts.json#rhel",
       "license": "MIT",
-      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
-      "sha256": "ed1a24244c515c63ff76aac74fd86d75269fbea9ed33f6bdd90e33e4cfab14c6"
+      "note": "Transparent product-topic event illustration. Exact official product icons and names are rendered separately in HTML.",
+      "sha256": "f8b7323346df2bf9f3ea580a5eca74796f2bceef2450ab1fad658f2165422c3a",
+      "transparent": true
     },
     "room-art/rhel-hero.webp": {
-      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "source": "Original OpenAI image generation in Codex, 2026-11-03; revision 2; transparent_background=true",
       "prompt": "room-art/prompts.json#rhel",
       "license": "MIT",
-      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
-      "sha256": "f67ddffa20fd19aa46e67683f4f923e8254fc33076b43ea0209ba3397732bb26"
+      "note": "Transparent product-topic event illustration. Exact official product icons and names are rendered separately in HTML.",
+      "sha256": "5e0f566b6496624cdf8be72f26611796964a9ca9f44c0ac4933a867d93455bc7",
+      "transparent": true
     },
     "room-art/security-card.webp": {
-      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "source": "Original OpenAI image generation in Codex, 2026-11-03; revision 2; transparent_background=true",
       "prompt": "room-art/prompts.json#security",
       "license": "MIT",
-      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
-      "sha256": "d646994f2e9b618e93196411c2a6d0f9865cc5b8f0b159edcdf7cfbfc027a8a1"
+      "note": "Transparent product-topic event illustration. Exact official product icons and names are rendered separately in HTML.",
+      "sha256": "6a152734ed3443dcbfb0de193eea8cc9640419f0b0841ccface445a025aed3f4",
+      "transparent": true
     },
     "room-art/security-hero.webp": {
-      "source": "Original OpenAI image generation in Codex, 2026-11-03",
+      "source": "Original OpenAI image generation in Codex, 2026-11-03; revision 2; transparent_background=true",
       "prompt": "room-art/prompts.json#security",
       "license": "MIT",
-      "note": "Generated event illustration, not official Red Hat product artwork. Official marks are separate.",
-      "sha256": "7c4e70167864c86be6bd283b792fc1f5cb9133c6246057ef4c42c34eeea5c860"
+      "note": "Transparent product-topic event illustration. Exact official product icons and names are rendered separately in HTML.",
+      "sha256": "f129190d3506a0ae09e73b14adc14fe862da77e022e70ba429692b943be2c08e",
+      "transparent": true
     }
   }
 }

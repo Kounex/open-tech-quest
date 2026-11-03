@@ -28,12 +28,14 @@ No gradients, glow, invented product logos, emoji decorations, or fake stats.
 Use approved/public product assets with provenance and stable local URLs.
 Private catalogue source archives and session credentials stay out of Git.
 
-Each room gets its own generated architectural quest environment and asset
-slots, rather than five color variants of a single card. The deployment
-workshop, automation control room, Linux engine room, security operations
-room and AI research lab share an editorial isometric direction. Official
-product marks stay separate from the illustrations. Theme changes do not
-change room identity.
+Each room gets its own transparent product-topic illustration and asset
+slots. OpenShift shows container orchestration; Ansible shows playbook fan-out;
+RHEL shows the Linux terminal and services; Security shows protected workloads;
+AI shows model inference. Crisp technical editorial artwork shares a red,
+charcoal and cyan palette. Exact official product icons and product names
+are integrated in HTML, never approximated by image generation. PNG and WebP
+exports must retain genuine alpha transparency, and their containers have no
+background fill. Theme changes do not change room identity.
 Theme asset URLs are optional: a deliberate typography/content composition
 must work before an organizer supplies artwork; never show placeholder boxes.
 

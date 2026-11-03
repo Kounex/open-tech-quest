@@ -12,7 +12,7 @@ typed text or alter the mark's proportions.
 
 Public product technology icons are available for OpenShift, Ansible, RHEL,
 and AI. Security uses the OpenShift product icon at the organizer’s request.
-These remain separate from the generated room illustrations.
+These are rendered unchanged beside the generated product-topic artwork.
 
 Add future selected web exports here, with provenance; never add raw private
 catalogue archives, session data or credential-bearing download URLs. Room
@@ -21,8 +21,11 @@ changing room IDs, challenge sequence, starts or solve history.
 
 ## Generated room illustrations
 
-`room-art/` contains five original architectural quest environments generated
-with the built-in OpenAI image-generation tool in Codex. They are event
+`room-art/` contains five original product-topic illustrations generated
+with the built-in OpenAI image-generation tool in Codex, requesting a genuine
+transparent background. Containers and routing, declarative automation, Linux
+terminals, protected workloads and model inference give each topic its own
+visual identity. They are event
 illustrations, not official Red Hat product artwork. The prompt set is in
 `room-art/prompts.json`; provenance is listed in `sources.json`. Generated
 illustrations and prompts are distributed under this repository's MIT license.
@@ -32,3 +35,9 @@ Each room has a 1536px header WebP and a 640px card WebP. The browser chooses
 the appropriate size; card artwork loads lazily. The same scene appears in
 the lobby and room header. A room's **Hero image URL** overrides its bundled
 illustration without changing challenge content, membership or timing.
+
+All ten WebPs must retain their alpha channel. Validate actual transparent
+pixels and edges after encoding; an opaque gray/white background is not an
+acceptable substitute. The artwork container has no background fill, so
+white cards and the page surface show through naturally. Product names and
+exact official icons are rendered in HTML rather than regenerated into art.
