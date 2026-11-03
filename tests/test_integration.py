@@ -22,7 +22,7 @@ from CTFd.cache import cache
 from CTFd.models import ChallengeFiles, Challenges, Configs, Flags, Hints, Solves, Teams, Users, db
 from CTFd.utils import get_config, set_config
 from CTFd.plugins.open_tech_quest.models import (QuestEvent, QuestRoom, QuestStep,
-    QuestStart, QuestPause, QuestAudit)
+    QuestStart, QuestPause, QuestAudit, QuestOnboarding, QuestReadiness, QuestTeamName)
 from CTFd.plugins.open_tech_quest.service import standings
 
 PREFIX = "/api/v1/quest"
@@ -48,6 +48,9 @@ class QuestIntegration(unittest.TestCase):
             assert QuestEvent.query.one().status == "draft"
             assert QuestRoom.query.count() == 5
             assert Challenges.query.count() == Solves.query.count() == 0
+            assert QuestOnboarding.query.get(1).phase == "check_in"
+            assert QuestOnboarding.query.get(1).team_size == 5
+            assert QuestReadiness.query.count() == 0
 
     @classmethod
     def tearDownClass(cls):
@@ -85,6 +88,7 @@ class QuestIntegration(unittest.TestCase):
             for key, value in (("setup", True), ("ctf_name", "Quest test"), ("user_mode", "teams"), ("challenge_visibility", "public"), ("account_visibility", "public"), ("verify_emails", False), ("paused", False), ("start", None), ("end", None)):
                 set_config(key, value)
             db.session.add(QuestEvent(id=1))
+            db.session.add(QuestOnboarding(id=1, phase="finalized", team_size=5, grandfathered=True))
             for pos, slug in enumerate(("openshift", "ansible", "rhel", "security", "ai")):
                 db.session.add(QuestRoom(slug=slug, name=slug.title(), position=pos, theme={"layout": slug}))
             self.team = Teams(name="Red team")
@@ -93,6 +97,9 @@ class QuestIntegration(unittest.TestCase):
             db.session.flush()
             db.session.add_all([Users(id=1, name="Organizer", email="admin@example.test", type="admin", password="test-only", verified=True), Users(id=2, name="Alice", email="alice@example.test", password="test-only", team_id=self.team.id, verified=True), Users(id=3, name="Bob", email="bob@example.test", password="test-only", team_id=self.team.id, verified=True), Users(id=4, name="Carol", email="carol@example.test", password="test-only", team_id=self.other_team.id, verified=True)])
             self.team_id, self.other_id = self.team.id, self.other_team.id
+            db.session.add_all([QuestTeamName(team_id=self.team_id, name_locked=True), QuestTeamName(team_id=self.other_id, name_locked=True)])
+            for uid in (2, 3, 4):
+                db.session.add(QuestReadiness(user_id=uid))
             for i in range(1, 4):
                 c = Challenges(id=i, name=f"Challenge {i}", description=f"Private instructions {i}", value=100, category="Quest", type="standard", state="visible")
                 db.session.add(c)
@@ -276,6 +283,8 @@ class QuestIntegration(unittest.TestCase):
 
     def test_allocation_preview_commit_validation_and_private_rosters(self):
         with self.app.app_context():
+            QuestOnboarding.query.get(1).phase = "check_in"
+            QuestOnboarding.query.get(1).team_size = 3
             for i in range(5, 12):
                 db.session.add(Users(id=i, name=f"Player {i}", email=f"p{i}@example.test", password="test-only"))
             db.session.commit()
@@ -316,6 +325,9 @@ class QuestIntegration(unittest.TestCase):
         self.assertNotIn("provided", public)
 
     def test_manual_membership_and_cross_room_reuse(self):
+        with self.app.app_context():
+            QuestOnboarding.query.get(1).phase = "check_in"
+            db.session.commit()
         result = self.post(self.admin, PREFIX + "/admin/rooms/ansible", {"challenge_ids": [2]}, "PATCH")
         self.assertEqual(result.status_code, 409)
         result = self.post(self.admin, PREFIX + f"/admin/teams/{self.team_id}", {"user_ids": [2]}, "PATCH")
@@ -407,9 +419,17 @@ class QuestIntegration(unittest.TestCase):
         self.assertLess(durations[47], 5.0)
 
     def test_team_form_noop_fields_allow_draft_save_and_live_exclusion(self):
+        with self.app.app_context():
+            QuestOnboarding.query.get(1).phase = "check_in"
+            QuestTeamName.query.delete()
+            db.session.commit()
         endpoint = PREFIX + f"/admin/teams/{self.team_id}"
         result = self.post(self.admin, endpoint, {"name": "Renamed team", "excluded": False, "reason": "", "user_ids": [2, 3]}, "PATCH")
         self.assertEqual(result.status_code, 200, result.get_data(as_text=True))
+        with self.app.app_context():
+            QuestOnboarding.query.get(1).phase = "finalized"
+            db.session.add_all([QuestTeamName(team_id=self.team_id,name_locked=True),QuestTeamName(team_id=self.other_id,name_locked=True)])
+            db.session.commit()
         self.action("start")
         payload = {"name": "Renamed team", "excluded": True, "reason": "Staff team"}
         result = self.post(self.admin, endpoint, payload, "PATCH")
@@ -450,6 +470,9 @@ class QuestIntegration(unittest.TestCase):
             self.assertEqual(challenge.next_id, 2)
 
     def test_native_login_landing_for_unassigned_users_and_organizers(self):
+        with self.app.app_context():
+            QuestOnboarding.query.get(1).phase = "check_in"
+            db.session.commit()
         self.assertEqual(self.admin.get("/team?next=%2Fchallenges").location, "/quest")
         result = self.post(self.admin, PREFIX + f"/admin/teams/{self.team_id}", {"user_ids": [2]}, "PATCH")
         self.assertEqual(result.status_code, 200)
@@ -487,10 +510,10 @@ class QuestIntegration(unittest.TestCase):
                     self.assertFalse(opening.done(), "Event start must wait for the accepted draft membership transaction")
                 finally:
                     release.set()
-                self.assertEqual(membership.result().status_code, 200)
+                self.assertEqual(membership.result().status_code, 409)
                 self.assertEqual(opening.result().status_code, 200)
         with self.app.app_context():
-            self.assertEqual(Users.query.get(5).team_id, self.team_id)
+            self.assertIsNone(Users.query.get(5).team_id)
             self.assertEqual(QuestEvent.query.get(1).status, "live")
 
     def test_allocation_rechecks_population_after_waiting_for_mariadb_lock(self):
@@ -498,6 +521,7 @@ class QuestIntegration(unittest.TestCase):
             self.skipTest("Production repeatable-read snapshots are exercised on MariaDB")
         from CTFd.plugins.open_tech_quest.service import event as locked_event
         with self.app.app_context():
+            QuestOnboarding.query.get(1).phase = "check_in"
             db.session.add(Users(id=5, name="Waiting player", email="waiting@example.test", password="test-only"))
             db.session.commit()
             locked_event(lock=True)
@@ -819,3 +843,317 @@ class QuestIntegration(unittest.TestCase):
         with self.app.app_context():
             self.assertEqual(QuestEvent.query.get(1).status, "draft")
             self.assertIsNotNone(original_active_batch())
+
+    def open_onboarding(self, capacity=5):
+        with self.app.app_context():
+            state = QuestOnboarding.query.get(1)
+            state.phase, state.team_size, state.grandfathered = "check_in", capacity, False
+            state.applied_at, state.finalized_at = None, None
+            QuestReadiness.query.delete()
+            QuestTeamName.query.delete()
+            db.session.commit()
+
+    def ready_user(self, client):
+        response = self.post(client, PREFIX + "/onboarding/ready", {})
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        return response.json["data"]
+
+    def onboarding_action(self, action, **values):
+        return self.post(self.admin, PREFIX + "/admin/onboarding/action", dict(action=action, **values))
+
+    def attendance_plan(self):
+        response = self.post(self.admin, PREFIX + "/admin/onboarding/optimize", {"preview": True})
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        return response.json["data"]
+
+    def apply_attendance(self, plan):
+        response = self.post(self.admin, PREFIX + "/admin/onboarding/optimize", {"preview": False, "fingerprint": plan["fingerprint"]})
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        return response.json["data"]
+
+    def test_onboarding_personal_ready_is_idempotent_and_has_no_clock_side_effects(self):
+        self.open_onboarding()
+        self.assertEqual(self.guest.get(PREFIX + "/onboarding").status_code, 401)
+        self.assertEqual(self.post(self.admin, PREFIX + "/onboarding/ready", {}).status_code, 403)
+        self.assertEqual(self.alice.post(PREFIX + "/onboarding/ready", json={}).status_code, 403)
+        self.assertEqual(self.post(self.alice, PREFIX + "/onboarding/ready", {"ready_at": "2000-01-01T00:00:00Z"}).status_code, 400)
+        first, second = self.ready_user(self.alice), self.ready_user(self.alice)
+        self.assertEqual(first["ready_at"], second["ready_at"])
+        self.assertFalse(first["late"])
+        self.assertNotIn("email", str(first))
+        with self.app.app_context():
+            self.assertEqual(QuestReadiness.query.count(), 1)
+            self.assertEqual(QuestStart.query.count(), 0)
+            self.assertEqual(Solves.query.count(), 0)
+            self.assertIsNone(QuestEvent.query.get(1).start_at)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code, 200)
+        late = self.ready_user(self.bob)
+        self.assertTrue(late["late"])
+        self.assertEqual(self.onboarding_action("reopen_checkin").status_code, 200)
+        self.assertTrue(self.bob.get(PREFIX + "/onboarding").json["data"]["late"])
+
+    def test_onboarding_full_workflow_preserves_readiness_names_and_empty_team_history(self):
+        self.open_onboarding()
+        for client in (self.alice, self.bob, self.carol):
+            self.ready_user(client)
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/event/action", {"action": "start"}).status_code, 409)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code, 200)
+        plan = self.attendance_plan()
+        self.assertEqual(len(plan["groups"]), 1)
+        self.assertEqual(self.apply_attendance(plan)["phase"], "naming")
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/onboarding/optimize", {"preview": False, "fingerprint": plan["fingerprint"]}).status_code, 409)
+        self.assertEqual(self.onboarding_action("reopen_checkin").status_code, 409)
+        self.assertEqual(self.onboarding_action("finalize").status_code, 409)
+        response = self.post(self.alice, PREFIX + "/onboarding/name", {"name": "Workshop Foxes", "confirm": True})
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertTrue(response.json["data"]["team"]["name_locked"])
+        self.assertEqual(self.post(self.bob, PREFIX + "/onboarding/name", {"name": "Other name", "confirm": True}).status_code, 409)
+        self.assertEqual(self.onboarding_action("finalize").status_code, 200)
+        self.assertTrue(self.admin.get(PREFIX + "/admin/state").json["data"]["onboarding"]["can_start"])
+        public = self.guest.get(PREFIX + "/standings").json["data"]["teams"]
+        self.assertEqual([team["name"] for team in public], ["Workshop Foxes"])
+        with self.app.app_context():
+            self.assertEqual(Teams.query.count(), 2)
+            self.assertEqual(QuestReadiness.query.count(), 3)
+            self.assertIsNotNone(Teams.query.get(self.other_id))
+        self.action("start")
+
+    def test_onboarding_preview_rejects_changed_attendance_capacity_identity_membership(self):
+        self.open_onboarding()
+        self.ready_user(self.alice)
+        self.ready_user(self.bob)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code, 200)
+        def reject(plan):
+            result = self.post(self.admin, PREFIX + "/admin/onboarding/optimize", {"preview": False, "fingerprint": plan["fingerprint"]})
+            self.assertEqual(result.status_code, 409, result.get_data(as_text=True))
+            self.assertEqual(self.admin.get(PREFIX + "/admin/state").json["data"]["onboarding"]["phase"], "closed")
+        plan = self.attendance_plan()
+        self.ready_user(self.carol)
+        reject(plan)
+        plan = self.attendance_plan()
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/onboarding", {"team_size": 4}, "PATCH").status_code, 200)
+        reject(plan)
+        plan = self.attendance_plan()
+        self.assertEqual(self.post(self.admin, PREFIX + f"/admin/teams/{self.team_id}", {"name": "Provisional rename"}, "PATCH").status_code, 200)
+        reject(plan)
+        plan = self.attendance_plan()
+        self.assertEqual(self.post(self.admin, PREFIX + f"/admin/teams/{self.team_id}", {"user_ids": [2]}, "PATCH").status_code, 200)
+        reject(plan)
+        plan = self.attendance_plan()
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/onboarding/optimize", {"preview": False, "fingerprint": plan["fingerprint"], "groups": []}).status_code, 400)
+        self.apply_attendance(plan)
+
+    def test_onboarding_concurrent_once_name_claims_and_casefold_uniqueness(self):
+        self.open_onboarding(capacity=2)
+        for client in (self.alice, self.bob, self.carol):
+            self.ready_user(client)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code, 200)
+        self.apply_attendance(self.attendance_plan())
+        def claim(item):
+            uid, name = item
+            return self.post(self.client(uid), PREFIX + "/onboarding/name", {"name": name, "confirm": True})
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(claim, [(2,"Orbit Foxes"),(3,"Orbit Ravens")]))
+        self.assertEqual(sorted(response.status_code for response in results), [200,409])
+        name = next(r.json["data"]["team"]["name"] for r in results if r.status_code == 200)
+        self.assertEqual(self.post(self.carol, PREFIX + "/onboarding/name", {"name": name.swapcase(), "confirm": True}).status_code, 409)
+        self.assertEqual(self.post(self.carol, PREFIX + "/onboarding/name", {"name": "Other cohort"}).status_code, 400)
+        self.assertEqual(self.post(self.carol, PREFIX + "/onboarding/name", {"name": "Other cohort", "confirm": True}).status_code, 200)
+        self.assertEqual(self.post(self.admin, PREFIX + f"/admin/teams/{self.team_id}", {"name": "Corrected name"}, "PATCH").status_code, 400)
+        self.assertEqual(self.post(self.admin, PREFIX + f"/admin/teams/{self.team_id}", {"name": "Corrected name", "reason": "Organizer verified preferred spelling"}, "PATCH").status_code, 200)
+
+    def test_onboarding_late_arrivals_can_form_reasoned_capacity_bound_team(self):
+        self.open_onboarding(capacity=1)
+        for client in (self.alice,self.bob,self.carol):
+            self.ready_user(client)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code, 200)
+        self.apply_attendance(self.attendance_plan())
+        with self.app.app_context():
+            db.session.add(Users(id=5, name="Late participant", email="late@example.test", password="test-only"))
+            db.session.commit()
+        late = self.client(5)
+        self.assertTrue(self.ready_user(late)["late"])
+        self.assertEqual(self.onboarding_action("finalize").status_code, 409)
+        self.assertEqual(self.onboarding_action("create_late_team", user_ids=[5]).status_code, 400)
+        self.assertEqual(self.onboarding_action("create_late_team", user_ids=[5], reason="Late arrival after attendance plan").status_code, 200)
+        self.assertTrue(late.get(PREFIX + "/onboarding").json["data"]["can_name"])
+        for uid in (2,3,4,5):
+            response = self.post(self.client(uid), PREFIX + "/onboarding/name", {"name": f"Final team {uid}", "confirm": True})
+            self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(self.onboarding_action("finalize").status_code, 200)
+        self.assertEqual(self.onboarding_action("create_late_team", user_ids=[5], reason="Cannot move final member").status_code, 409)
+        self.assertEqual(self.post(self.admin, PREFIX + f"/admin/teams/{self.team_id}", {"user_ids": []}, "PATCH").status_code, 409)
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/onboarding", {"team_size": 10}, "PATCH").status_code, 409)
+
+    def test_onboarding_roster_privacy_and_native_frozen_name_bypasses(self):
+        self.open_onboarding(capacity=2)
+        for client in (self.alice,self.bob,self.carol):
+            self.ready_user(client)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code, 200)
+        self.apply_attendance(self.attendance_plan())
+        own = self.alice.get(PREFIX + "/onboarding").json["data"]
+        self.assertEqual({member["id"] for member in own["team"]["members"]}, {2,3})
+        self.assertNotIn("email", str(own))
+        self.assertNotIn("@", str(own))
+        for uid,name in ((2,"Native Guard Foxes"),(4,"Native Guard Ravens")):
+            self.assertEqual(self.post(self.client(uid), PREFIX + "/onboarding/name", {"name": name, "confirm": True}).status_code, 200)
+        self.assertEqual(self.onboarding_action("finalize").status_code, 200)
+        for path,payload,method in ((f"/api/v1/teams/{self.team_id}",{"name":"Bypass"},"PATCH"),(f"/api/v1/teams/{self.team_id}/members",{"user_id":4},"POST"),("/api/v1/users/2",{},"DELETE")):
+            self.assertEqual(self.post(self.admin,path,payload,method).status_code,409)
+        self.assertEqual(self.post(self.alice,"/api/v1/teams/me",{"name":"Bypass"},"PATCH").status_code,403)
+        self.assertEqual(self.admin.get("/teams/new").status_code,403)
+        self.assertEqual(self.post(self.alice,"/api/v1/users/me",{"name":"Alice Updated"},"PATCH").status_code,200)
+        self.assertEqual(self.alice.get(PREFIX + "/onboarding").json["data"]["team"]["name"],"Native Guard Foxes")
+        release = (datetime.utcnow()+timedelta(hours=1)).isoformat()+"Z"
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/event",{"rosters_release_at":release},"PATCH").status_code,200)
+        hidden = self.alice.get(PREFIX+"/onboarding").json["data"]
+        self.assertIsNone(hidden["team"])
+        self.assertFalse(hidden["can_name"])
+        self.assertIsNotNone(hidden["ready_at"])
+
+    def test_onboarding_optimizer_keeps_full_groups_minimal_moves_and_no_show_accounts(self):
+        self.open_onboarding()
+        with self.app.app_context():
+            password = Users.query.get(2).password
+            for uid in range(5,24):
+                db.session.execute(Users.__table__.insert(), {"id":uid,"name":f"Attendee {uid}","email":f"attendee{uid}@example.test","password":password,"type":"user"})
+            teams = Teams.query.order_by(Teams.id).all()
+            for index in range(3):
+                team = Teams(name=f"Provisional {index+3}")
+                db.session.add(team)
+                db.session.flush()
+                teams.append(team)
+            for index,uid in enumerate(range(2,23)):
+                Users.query.get(uid).team_id = teams[index//5].id
+                db.session.add(QuestReadiness(user_id=uid))
+            Users.query.get(23).team_id = teams[-1].id
+            db.session.commit()
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        plan = self.attendance_plan()
+        self.assertEqual(sorted(len(group["user_ids"]) for group in plan["groups"]),[4,4,4,4,5])
+        self.assertEqual(len(plan["moves"]),3)
+        self.assertEqual(plan["unassigned_user_ids"],[23])
+        self.assertEqual(self.attendance_plan(),plan)
+        self.apply_attendance(plan)
+        with self.app.app_context():
+            self.assertIsNone(Users.query.get(23).team_id)
+            self.assertEqual(Users.query.count(),23)
+            self.assertEqual(Teams.query.count(),5)
+            self.assertEqual(QuestReadiness.query.count(),21)
+
+    def test_onboarding_optimizer_preserves_activity_or_refuses_absent_members(self):
+        self.open_onboarding()
+        self.ready_user(self.alice)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        with self.app.app_context():
+            at = datetime.utcnow()-timedelta(minutes=1)
+            db.session.add(Solves(challenge_id=1,user_id=2,team_id=self.team_id,date=at))
+            db.session.add(QuestStart(team_id=self.team_id,room_id=QuestRoom.query.first().id,started_at=at))
+            db.session.commit()
+        refused = self.post(self.admin,PREFIX+"/admin/onboarding/optimize",{"preview":True})
+        self.assertEqual(refused.status_code,409)
+        self.assertIn("activity",refused.json["error"])
+        self.ready_user(self.bob)
+        plan = self.attendance_plan()
+        self.assertEqual(plan["groups"][0]["team_id"],self.team_id)
+        self.apply_attendance(plan)
+        with self.app.app_context():
+            self.assertEqual(Solves.query.one().date,at)
+            self.assertEqual(QuestStart.query.one().started_at,at)
+            self.assertEqual(Users.query.get(2).team_id,self.team_id)
+            self.assertEqual(Users.query.get(3).team_id,self.team_id)
+            self.assertIsNone(Users.query.get(4).team_id)
+
+    def test_onboarding_additive_upgrade_grandfathers_live_without_changing_history(self):
+        import importlib.util
+        from alembic.migration import MigrationContext
+        from alembic.operations import Operations
+        path = Path("/opt/CTFd/CTFd/plugins/open_tech_quest/migrations/0004_onboarding.py")
+        spec = importlib.util.spec_from_file_location("quest_onboarding_upgrade",path)
+        migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration)
+        with self.app.app_context():
+            at = datetime.utcnow()-timedelta(minutes=3)
+            e = QuestEvent.query.get(1)
+            e.status,e.start_at = "live",at
+            db.session.add(Solves(challenge_id=1,user_id=2,team_id=self.team_id,date=at+timedelta(seconds=20)))
+            db.session.commit()
+            expected = [(u.id,u.team_id,u.name) for u in Users.query.order_by(Users.id).all()]
+            db.session.remove()
+            with db.engine.connect() as connection:
+                transaction = connection.begin()
+                for model in (QuestReadiness,QuestTeamName,QuestOnboarding):
+                    model.__table__.drop(bind=connection)
+                migration.upgrade(Operations(MigrationContext.configure(connection)))
+                transaction.commit()
+            db.session.expire_all()
+            state = QuestOnboarding.query.get(1)
+            self.assertEqual(state.phase,"finalized")
+            self.assertTrue(state.grandfathered)
+            self.assertEqual(state.team_size,5)
+            self.assertEqual([(u.id,u.team_id,u.name) for u in Users.query.order_by(Users.id).all()],expected)
+            self.assertEqual(QuestReadiness.query.count(),0)
+            self.assertTrue(all(row.name_locked for row in QuestTeamName.query.all()))
+            self.assertEqual(QuestEvent.query.get(1).start_at,at)
+            self.assertEqual(Solves.query.one().date,at+timedelta(seconds=20))
+
+    def test_onboarding_empty_history_team_remains_in_standings(self):
+        from CTFd.models import Awards
+        with self.app.app_context():
+            archived = Teams(name="Historical empty team")
+            empty = Teams(name="Unused empty team")
+            db.session.add_all([archived,empty])
+            db.session.flush()
+            archived_id,empty_id = archived.id,empty.id
+            db.session.add(Awards(team_id=archived.id,name="Historical note",value=0))
+            db.session.commit()
+            ids = {team["id"] for team in standings()["teams"]}
+            self.assertIn(archived_id,ids)
+            self.assertNotIn(empty_id,ids)
+
+    def test_onboarding_ban_after_finalization_does_not_deadlock_start_or_move_roster(self):
+        self.open_onboarding(capacity=2)
+        for client in (self.alice,self.bob,self.carol):
+            self.ready_user(client)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        self.apply_attendance(self.attendance_plan())
+        for uid,name in ((2,"Moderation Foxes"),(4,"Moderation Ravens")):
+            self.assertEqual(self.post(self.client(uid),PREFIX+"/onboarding/name",{"name":name,"confirm":True}).status_code,200)
+        self.assertEqual(self.onboarding_action("finalize").status_code,200)
+        self.assertEqual(self.post(self.admin,"/api/v1/users/3",{"banned":True},"PATCH").status_code,200)
+        self.assertEqual(self.post(self.admin,"/api/v1/users/2",{"type":"admin"},"PATCH").status_code,409)
+        self.assertTrue(self.admin.get(PREFIX+"/admin/state").json["data"]["onboarding"]["can_start"])
+        self.action("start")
+        self.assertEqual(self.bob.get(PREFIX+"/onboarding").status_code,403)
+        with self.app.app_context():
+            self.assertEqual(Users.query.get(3).team_id,self.team_id)
+            self.assertTrue(Users.query.get(3).banned)
+
+    def test_onboarding_reasoned_ineligible_removal_before_finalization(self):
+        self.open_onboarding()
+        for client in (self.alice,self.bob,self.carol):
+            self.ready_user(client)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        self.apply_attendance(self.attendance_plan())
+        self.assertEqual(self.post(self.admin,"/api/v1/users/3",{"banned":True},"PATCH").status_code,200)
+        endpoint = PREFIX+f"/admin/teams/{self.team_id}"
+        self.assertEqual(self.post(self.admin,endpoint,{"user_ids":[2,4]},"PATCH").status_code,400)
+        result = self.post(self.admin,endpoint,{"user_ids":[2,4],"reason":"Banned account removed before final roster"},"PATCH")
+        self.assertEqual(result.status_code,200,result.get_data(as_text=True))
+        self.assertEqual(self.post(self.admin,endpoint,{"user_ids":[2],"reason":"Arbitrary eligible move"},"PATCH").status_code,409)
+        with self.app.app_context():
+            self.assertIsNone(Users.query.get(3).team_id)
+
+    def test_onboarding_generated_placeholder_must_change_but_meaningful_name_can_confirm(self):
+        self.open_onboarding(capacity=1)
+        for client in (self.alice,self.bob,self.carol):
+            self.ready_user(client)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        self.apply_attendance(self.attendance_plan())
+        own = self.bob.get(PREFIX+"/onboarding").json["data"]
+        self.assertTrue(own["team"]["name"].startswith("Team "))
+        response = self.post(self.bob,PREFIX+"/onboarding/name",{"name":own["team"]["name"].swapcase()+" ","confirm":True})
+        self.assertEqual(response.status_code,400)
+        self.assertIn("placeholder",response.json["error"])
+        alice = self.alice.get(PREFIX+"/onboarding").json["data"]
+        self.assertEqual(self.post(self.alice,PREFIX+"/onboarding/name",{"name":alice["team"]["name"],"confirm":True}).status_code,200)

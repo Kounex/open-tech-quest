@@ -1,6 +1,7 @@
 """Server-side projections of native solves and durable quest history."""
 from datetime import datetime, timezone
-from CTFd.models import Challenges, Solves, Teams
+from sqlalchemy import exists, or_
+from CTFd.models import Awards, Challenges, Solves, Submissions, Teams, Unlocks, Users
 from .models import (QuestEvent, QuestRoom, QuestStep, QuestStart, QuestPause,
                      QuestExclusion, QuestCorrection)
 from .ranking import active_ms, prefix, assign_ranks
@@ -167,7 +168,14 @@ def standings(e=None, public=False):
     rooms = projection.rooms
     excluded = {x.team_id for x in QuestExclusion.query.all()}
     teams = []
-    for team in Teams.query.with_entities(Teams.id, Teams.name).filter_by(banned=False, hidden=False).all():
+    visible_teams = Teams.query.with_entities(Teams.id, Teams.name).filter_by(banned=False, hidden=False).filter(or_(
+        exists().where(Users.team_id == Teams.id),
+        exists().where(QuestStart.team_id == Teams.id),
+        exists().where(Submissions.team_id == Teams.id),
+        exists().where(Awards.team_id == Teams.id),
+        exists().where(Unlocks.team_id == Teams.id),
+    ))
+    for team in visible_teams.all():
         if team.id in excluded:
             continue
         solves = projection.solves.get(team.id, {})

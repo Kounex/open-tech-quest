@@ -15,7 +15,7 @@ from CTFd.models import Challenges, ChallengeFiles, Configs, Flags, Hints, Solve
 from CTFd.cache import cache
 from CTFd.utils import set_config
 from CTFd.utils.crypto import hash_password
-from CTFd.plugins.open_tech_quest.models import QuestEvent, QuestRoom, QuestStep, QuestStart
+from CTFd.plugins.open_tech_quest.models import QuestEvent, QuestRoom, QuestStep, QuestStart, QuestOnboarding, QuestReadiness, QuestTeamName
 
 
 def main():
@@ -44,6 +44,7 @@ def main():
             set_config(key, value)
         e = QuestEvent(id=1, name="Open Tech Quest", status="draft" if args.draft else "live", start_at=None if args.draft else at)
         db.session.add(e)
+        db.session.add(QuestOnboarding(id=1, phase="check_in" if args.draft else "finalized", team_size=5, grandfathered=not args.draft))
         password = hash_password("quest-demo-only")
         names = ["Atlas", "Aurora", "Beacon", "Binary", "Bluebird", "Bridge", "Cedar", "Circuit", "Cloudwalk", "Cobalt", "Comet", "Compass", "Core", "Cosmos", "Crimson", "Delta", "Discovery", "Echo", "Elm", "Ember", "Falcon", "Fern", "Flux", "Forge", "Glider", "Harbor", "Helix", "Horizon", "Indigo", "Juniper", "Keystone", "Kite", "Lighthouse", "Maple", "Meridian", "Meteor", "Nimbus", "Nova", "Orbit", "Pioneer", "Pixel", "Quartz", "Relay", "River", "Signal", "Skyline", "Sparrow", "Summit", "Vector", "Willow"]
         db.session.execute(Users.__table__.insert(), {"id": 1, "name": "organizer", "email": "organizer@example.test", "password": password, "type": "admin", "verified": True, "banned": False, "hidden": False})
@@ -53,12 +54,17 @@ def main():
             db.session.add(team)
             db.session.flush()
             team_ids.append(team.id)
+            if not args.draft:
+                db.session.add(QuestTeamName(team_id=team.id, name_locked=True))
             rows = []
             for member in range(2):
                 uid = 2 + index * 2 + member
                 username = ("atlas-one" if member == 0 else "atlas-two") if index == 0 else f"{name.lower()}-{member + 1}"
                 rows.append({"id": uid, "name": username, "email": username + "@example.test", "password": password, "type": "user", "verified": True, "banned": False, "hidden": False, "team_id": team.id})
             db.session.execute(Users.__table__.insert(), rows)
+            if not args.draft:
+                for row in rows:
+                    db.session.add(QuestReadiness(user_id=row["id"], ready_at=at))
             team.captain_id = rows[0]["id"]
         for position, (slug, name) in enumerate((("openshift", "OpenShift"), ("ansible", "Ansible"), ("rhel", "RHEL"), ("security", "Security"), ("ai", "AI"))):
             room = QuestRoom(slug=slug, name=name, position=position, subtitle={"openshift": "Build on a platform that moves with you", "ansible": "Turn repeatable work into reliable automation", "rhel": "Get closer to the operating system", "security": "Follow evidence. Protect the system.", "ai": "Explore models, data and open possibilities"}[slug], description="Disposable practice challenges for browser and load verification.", theme={"layout": slug, "accent": "#00a6b2", "logo_url": None if slug == "security" else f"/plugins/open_tech_quest/assets/branding/{slug}.{'webp' if slug == 'ai' else 'png'}", "hero_url": None})

@@ -16,11 +16,11 @@ from CTFd.utils import _get_config
 from CTFd.utils.dates import ctftime
 from CTFd.utils.user import get_current_user, is_admin
 from .models import (QuestEvent, QuestRoom, QuestStep, QuestStart, QuestPause,
-                     QuestExclusion, QuestCorrection, QuestAudit)
+                     QuestExclusion, QuestCorrection, QuestAudit, QuestReadiness, QuestTeamName)
 from .service import (event, event_data, now, iso, parse_time, released,
                       room_data, room_steps, standings, Projection)
 
-from . import demo
+from . import demo, onboarding
 
 api = Blueprint("quest_api", __name__)
 
@@ -40,6 +40,12 @@ def success(data=None):
 
 @api.errorhandler(QuestError)
 def error(exc):
+    db.session.rollback()
+    return jsonify(success=False, error=exc.message), exc.status
+
+
+@api.errorhandler(onboarding.OnboardingError)
+def onboarding_error(exc):
     db.session.rollback()
     return jsonify(success=False, error=exc.message), exc.status
 
@@ -211,9 +217,12 @@ def projector_view():
     return success(event().projector)
 
 
-def team_data(team):
+def team_data(team, readiness=None, name_locks=None):
+    readiness = readiness if readiness is not None else {row.user_id: row for row in QuestReadiness.query.filter(QuestReadiness.user_id.in_([u.id for u in team.members])).all()}
     return {"id": team.id, "name": team.name, "user_ids": [u.id for u in team.members],
-            "excluded": QuestExclusion.query.get(team.id) is not None}
+            "excluded": QuestExclusion.query.get(team.id) is not None,
+            "name_locked": team.id in name_locks if name_locks is not None else onboarding.is_locked(team.id),
+            "ready_count": sum(u.id in readiness for u in team.members)}
 
 
 @api.route("/admin/state")
@@ -221,12 +230,17 @@ def team_data(team):
 def admin_state():
     mapped = {s.challenge_id: s.room_id for s in QuestStep.query.all()}
     room_slugs = {r.id: r.slug for r in QuestRoom.query.all()}
+    readiness = {row.user_id: row for row in QuestReadiness.query.all()}
+    name_locks = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
     return success({"event": event_data(), "rooms": current_rooms(),
                     "available_challenges": [{"id": c.id, "name": c.name, "state": c.state, "room_slug": room_slugs.get(mapped.get(c.id))} for c in Challenges.query.order_by(Challenges.id).all()],
-                    "teams": [team_data(t) for t in Teams.query.order_by(Teams.id).all()],
-                    "participants": [{"id": u.id, "name": u.name, "email": u.email, "team_id": u.team_id} for u in Users.query.filter_by(type="user").order_by(Users.id).all()],
+                    "teams": [team_data(t, readiness, name_locks) for t in Teams.query.order_by(Teams.id).all()],
+                    "participants": [{"id": u.id, "name": u.name, "email": u.email, "team_id": u.team_id,
+                                      "ready_at": iso(readiness[u.id].ready_at) if u.id in readiness else None,
+                                      "late": bool(u.id in readiness and readiness[u.id].late),
+                                      "banned": bool(u.banned)} for u in Users.query.filter_by(type="user").order_by(Users.id).all()],
                     "audit": [{"id": a.id, "actor_id": a.actor_id, "action": a.action, "detail": a.detail, "created_at": iso(a.created_at)} for a in QuestAudit.query.order_by(QuestAudit.id.desc()).limit(200).all()],
-                    "standings": standings(), "projector": event().projector, "demo": demo.status(event())})
+                    "standings": standings(), "projector": event().projector, "demo": demo.status(event()), "onboarding": onboarding.summary(event())})
 
 
 @api.route("/admin/event", methods=["PATCH"])
@@ -262,10 +276,9 @@ def event_action():
     action, at = data.get("action"), now()
     if action == "start":
         draft(e)
-        if demo.active_batch():
-            fail("Remove demo content before starting the competition; organizers can preview it while in draft.", 409)
-        if QuestStep.query.first() is None:
-            fail("Configure at least one room challenge before starting the event", 409)
+        blocked = onboarding.start_reason(e)
+        if blocked:
+            fail(blocked, 409)
         if e.start_at and e.start_at > at:
             fail("The configured start is still in the future", 409)
         if e.end_at and e.end_at <= at:
@@ -424,10 +437,15 @@ def user_ids(data):
 def allocate():
     data, e = body(), event(lock=True)
     draft(e)
+    state = onboarding.settings()
+    if state.phase != "check_in":
+        fail("Initial allocation is available only while check-in is open", 409)
     preview = boolean(data.get("preview", True), "preview")
     users = eligible_users()
+    size = state.team_size
+    if "team_size" in data and integer(data["team_size"], "Team size", 1, 50) != size:
+        fail("Save the maximum team size in onboarding settings before previewing allocation", 409)
     if preview:
-        size = integer(data.get("team_size", 4), "Team size", 1, 50)
         if not users:
             return success({"groups": []})
         secrets.SystemRandom().shuffle(users)
@@ -449,8 +467,8 @@ def allocate():
         if not isinstance(group, dict):
             fail("Each group must contain name and user_ids")
         name, members = unique_name(group.get("name")), user_ids(group)
-        if not members or len(members) > 50 or name.casefold() in names:
-            fail("Groups require unique names and between 1 and 50 members")
+        if not members or len(members) > size or name.casefold() in names:
+            fail(f"Groups require unique names and between 1 and {size} members")
         names.add(name.casefold())
         ids.extend(members)
         validated.append((name, members))
@@ -486,14 +504,30 @@ def configure_team(team_id):
         name = text(data["name"], "Team name", 128)
         if name != team.name:
             draft(e)
+            if onboarding.settings().phase in ("naming", "finalized") or onboarding.is_locked(team.id):
+                reason(data)
+                onboarding.lock_name(team.id, get_current_user().id)
             team.name = unique_name(name, team.id)
     changed_users = set()
     if "user_ids" in data:
         draft(e)
         ids = user_ids(data)
+        state = onboarding.settings()
+        current_ids = {u.id for u in team.members}
+        if state.phase == "finalized" and set(ids) != current_ids:
+            fail("Finalized team rosters cannot be changed", 409)
+        if len(ids) > state.team_size:
+            fail("Team exceeds the configured maximum size", 409)
         users = Users.query.filter(Users.id.in_(ids)).all()
-        if len(users) != len(ids) or any(u.type != "user" or u.banned or (u.team_id and u.team_id != team_id) for u in users):
-            fail("Members must be eligible unassigned participants or current team members")
+        if len(users) != len(ids) or any((not onboarding.eligible(u) and u.id not in current_ids) or (u.team_id and u.team_id != team_id) for u in users):
+            fail("New members must be eligible unassigned participants; existing members may be retained")
+        if state.phase == "naming" and set(ids) != current_ids:
+            reason(data)
+            removed, added = current_ids - set(ids), set(ids) - current_ids
+            if any(onboarding.eligible(Users.query.get(uid)) for uid in removed) or any(QuestReadiness.query.get(uid) is None for uid in added):
+                fail("After optimization, only ready late arrivals may be added and ineligible existing members removed; ready eligible members cannot be moved", 409)
+            if added and (team.banned or team.hidden):
+                fail("Late arrivals require a visible non-banned team", 409)
         for user in team.members:
             changed_users.add(user.id)
             user.team_id = None
@@ -591,3 +625,168 @@ def manage_demo():
     clear_challenges()
     clear_standings()
     return success(demo.status(e))
+
+
+def participant_account():
+    user = get_current_user()
+    if user is None:
+        fail("Sign in to join the onboarding process", 401)
+    if not onboarding.eligible(user):
+        fail("Only non-banned participant accounts can check in", 403)
+    return user
+
+
+@api.route("/onboarding")
+def onboarding_view():
+    return success(onboarding.participant(participant_account(), event()))
+
+
+@api.route("/onboarding/ready", methods=["POST"])
+def ready_for_quest():
+    data, e = body(), event(lock=True)
+    user = participant_account()
+    if data:
+        fail("Readiness is recorded using the server clock; no fields are accepted")
+    row = QuestReadiness.query.get(user.id)
+    state = onboarding.settings()
+    if row is None:
+        if e.status != "draft" or state.phase not in ("check_in", "closed", "naming"):
+            fail("Attendance confirmation is closed", 409)
+        row = QuestReadiness(user_id=user.id, ready_at=now(), late=state.phase != "check_in")
+        db.session.add(row)
+        audit("onboarding.ready", {"user_id": user.id, "late": row.late})
+    db.session.commit()
+    return success(onboarding.participant(user, e))
+
+
+@api.route("/onboarding/name", methods=["POST"])
+def claim_team_name():
+    data, e = body(), event(lock=True)
+    user = participant_account()
+    if data.get("confirm") is not True:
+        fail("Confirm that your team's chosen name will be fixed")
+    if e.status != "draft" or onboarding.settings().phase != "naming":
+        fail("Team naming is available only after attendance optimization and before finalization", 409)
+    if not user.team_id or QuestReadiness.query.get(user.id) is None or not released(e):
+        fail("You must be a ready member of a released team to choose its name", 403)
+    if onboarding.is_locked(user.team_id):
+        fail("Your team has already chosen its final name. Ask an organizer for a reasoned correction.", 409)
+    team = Teams.query.get(user.team_id)
+    if team.banned or team.hidden:
+        fail("This team is not eligible for naming", 403)
+    name = text(data.get("name"), "Team name", 128)
+    if re.fullmatch(r"team\s*\d+", team.name.strip(), re.IGNORECASE) and name.casefold() == team.name.strip().casefold():
+        fail("Choose a final team name that differs from the provisional placeholder")
+    team.name = unique_name(name, team.id)
+    onboarding.lock_name(team.id, user.id)
+    audit("onboarding.name", {"team_id": team.id, "name": team.name})
+    db.session.commit()
+    clear_team_session(team.id)
+    return success(onboarding.participant(user, e))
+
+
+@api.route("/admin/onboarding", methods=["PATCH"])
+@admin
+def configure_onboarding():
+    data, e = body(), event(lock=True)
+    draft(e)
+    state = onboarding.settings()
+    if state.phase not in ("check_in", "closed"):
+        fail("Team capacity is fixed after attendance optimization", 409)
+    if set(data) != {"team_size"}:
+        fail("Supply the maximum team_size")
+    state.team_size = integer(data["team_size"], "Team size", 1, 50)
+    audit("onboarding.configure", {"team_size": state.team_size})
+    db.session.commit()
+    return success(onboarding.summary(e))
+
+
+@api.route("/admin/onboarding/action", methods=["POST"])
+@admin
+def onboarding_action():
+    data, e = body(), event(lock=True)
+    draft(e)
+    state = onboarding.settings()
+    action = data.get("action")
+    if action == "close_checkin":
+        if state.phase != "check_in":
+            fail("Check-in is not open", 409)
+        state.phase = "closed"
+    elif action == "reopen_checkin":
+        if state.phase != "closed":
+            fail("Only closed check-in can reopen before optimization is applied", 409)
+        state.phase = "check_in"
+    elif action == "finalize":
+        if state.phase != "naming":
+            fail("Apply the attendance plan and confirm team names before finalization", 409)
+        blocked = onboarding.finalization_reason()
+        if blocked:
+            fail(blocked, 409)
+        state.phase, state.finalized_at = "finalized", now()
+    elif action == "create_late_team":
+        if state.phase != "naming":
+            fail("Late arrival teams can be created only during naming", 409)
+        explanation = reason(data)
+        ids = user_ids(data)
+        if not ids or len(ids) > state.team_size:
+            fail("Choose ready unassigned participants within team capacity")
+        users = Users.query.filter(Users.id.in_(ids)).all()
+        if len(users) != len(ids) or any(not onboarding.eligible(u) or u.team_id or QuestReadiness.query.get(u.id) is None for u in users):
+            fail("Late arrival teams require ready eligible unassigned participants", 409)
+        names = {t.name.casefold() for t in Teams.query.all()}
+        number = 1
+        while f"Team {number:02}".casefold() in names:
+            number += 1
+        team = Teams(name=f"Team {number:02}", captain_id=ids[0])
+        db.session.add(team)
+        db.session.flush()
+        for user in users:
+            user.team_id = team.id
+        audit("onboarding.late_team", {"team_id": team.id, "user_ids": ids, "reason": explanation})
+    else:
+        fail("Unknown onboarding action")
+    audit("onboarding." + action, {"reason": data.get("reason")})
+    db.session.commit()
+    if action == "create_late_team":
+        for uid in ids:
+            clear_user_session(uid)
+    return success(onboarding.summary(e))
+
+
+@api.route("/admin/onboarding/optimize", methods=["POST"])
+@admin
+def optimize_onboarding():
+    data, e = body(), event(lock=True)
+    if set(data) - {"preview", "fingerprint"}:
+        fail("Attendance plans are computed by the server; do not submit edited groups")
+    preview = boolean(data.get("preview", True), "preview")
+    plan = onboarding.preview(e)
+    if preview:
+        return success(plan)
+    supplied = data.get("fingerprint")
+    if not isinstance(supplied, str) or re.fullmatch(r"[0-9a-f]{64}", supplied) is None or not __import__("hmac").compare_digest(supplied, plan["fingerprint"]):
+        fail("Attendance, memberships or settings changed. Preview the current plan before applying it.", 409)
+    assignments = {}
+    for group in plan["groups"]:
+        team = Teams.query.get(group["team_id"]) if group["team_id"] else Teams(name=group["name"])
+        if group["team_id"] is None:
+            db.session.add(team)
+            db.session.flush()
+        for uid in group["user_ids"]:
+            assignments[uid] = team.id
+    users = Users.query.all()
+    for user in users:
+        user.team_id = assignments.get(user.id)
+    for team in Teams.query.all():
+        ids = sorted(uid for uid, tid in assignments.items() if tid == team.id)
+        team.captain_id = team.captain_id if team.captain_id in ids else (ids[0] if ids else None)
+    state = onboarding.settings()
+    state.phase, state.applied_at = "naming", now()
+    audit("onboarding.optimize", {"fingerprint": plan["fingerprint"], "groups": plan["groups"], "unassigned_user_ids": plan["unassigned_user_ids"]})
+    db.session.commit()
+    for user in users:
+        clear_user_session(user.id)
+    for team in Teams.query.all():
+        clear_team_session(team.id)
+    clear_standings()
+    return success(onboarding.summary(e))

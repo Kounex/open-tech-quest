@@ -1,0 +1,186 @@
+"""Personal attendance, deterministic roster optimization and one-time naming."""
+import hashlib
+import hmac
+import json
+from datetime import datetime
+from flask import current_app
+from CTFd.models import Awards, Submissions, Teams, Unlocks, Users, db
+from .models import (QuestOnboarding, QuestReadiness, QuestTeamName, QuestStart,
+                     QuestStep)
+from .onboarding_math import optimize
+from .service import iso, now, released
+
+
+class OnboardingError(Exception):
+    def __init__(self, message, status=409):
+        self.message, self.status = message, status
+
+
+def initialize(e):
+    if QuestOnboarding.query.get(1) is not None:
+        return
+    from .service import event
+    e = event(lock=True)
+    if QuestOnboarding.query.get(1) is not None:
+        db.session.commit()
+        return
+    legacy = e.status != "draft"
+    db.session.add(QuestOnboarding(id=1, phase="finalized" if legacy else "check_in", team_size=5,
+                                 grandfathered=legacy, finalized_at=now() if legacy else None))
+    if legacy:
+        for team in Teams.query.all():
+            db.session.add(QuestTeamName(team_id=team.id, name_locked=True))
+    db.session.commit()
+
+
+def settings():
+    return QuestOnboarding.query.get(1)
+
+
+def eligible(user):
+    return user.type == "user" and not user.banned
+
+
+def is_locked(team_id):
+    row = QuestTeamName.query.get(team_id)
+    return bool(row and row.name_locked)
+
+
+def lock_name(team_id, actor_id):
+    row = QuestTeamName.query.get(team_id)
+    if row is None:
+        row = QuestTeamName(team_id=team_id)
+        db.session.add(row)
+    row.name_locked, row.claimed_by, row.claimed_at = True, actor_id, now()
+
+
+def participant(user, e):
+    state = settings()
+    ready = QuestReadiness.query.get(user.id)
+    show = released(e)
+    team = Teams.query.get(user.team_id) if user.team_id and show else None
+    roster = None
+    if team:
+        readiness = {r.user_id: r for r in QuestReadiness.query.filter(QuestReadiness.user_id.in_([u.id for u in team.members])).all()}
+        roster = {"id": team.id, "name": team.name, "name_locked": is_locked(team.id),
+                  "members": [{"id": u.id, "name": u.name, "ready_at": iso(readiness[u.id].ready_at) if u.id in readiness else None} for u in sorted(team.members, key=lambda u: u.id)]}
+    return {"phase": state.phase, "team_size": state.team_size,
+            "ready_at": iso(ready.ready_at) if ready else None, "late": bool(ready and ready.late),
+            "roster_released": show, "team": roster,
+            "can_ready": eligible(user) and state.phase in ("check_in", "closed", "naming") and e.status == "draft" and not ready,
+            "can_name": bool(eligible(user) and ready and team and not team.banned and not team.hidden
+                             and state.phase == "naming" and e.status == "draft" and not is_locked(team.id))}
+
+
+def competing_teams():
+    return [team for team in Teams.query.filter_by(banned=False, hidden=False).all()
+            if any(eligible(user) for user in team.members)]
+
+
+def finalization_reason():
+    state = settings()
+    ready = {r.user_id for r in QuestReadiness.query.all()}
+    users = Users.query.filter_by(type="user", banned=False).all()
+    teams = {team.id: team for team in Teams.query.all()}
+    locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
+    if not any(user.id in ready for user in users):
+        return "At least one ready participant is required before finalization."
+    for user in users:
+        if user.id in ready and not user.team_id:
+            return "Assign every ready late arrival before finalizing rosters."
+        if user.team_id and user.id not in ready:
+            return "Remove non-ready participants from provisional rosters before finalizing."
+        if user.id in ready and user.team_id and (teams[user.team_id].banned or teams[user.team_id].hidden):
+            return "Ready participants must belong to visible, non-banned teams."
+    for team in teams.values():
+        if any(user.type != "user" for user in team.members):
+            return "Remove administrator accounts from participant teams before finalizing."
+        if len(team.members) > state.team_size:
+            return "A team exceeds the configured capacity."
+    if any(team.id not in locked for team in teams.values() if not team.hidden and not team.banned and any(eligible(user) for user in team.members)):
+        return "Every competing team must confirm its final name before finalization."
+    return None
+
+
+def start_reason(e):
+    from .demo import active_batch
+    if active_batch():
+        return "Remove demo content before starting the competition; organizers can preview it while in draft."
+    if QuestStep.query.first() is None:
+        return "Configure at least one room challenge before starting the event."
+    if settings().phase != "finalized":
+        return "Finalize the attended team rosters and team names before starting the competition."
+    if not settings().grandfathered:
+        reason = finalization_reason()
+        if reason:
+            return reason
+    locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
+    if any(team.id not in locked for team in competing_teams()):
+        return "Every competing team must confirm its final name before starting."
+    if e.start_at and e.start_at > now():
+        return "The configured start is still in the future."
+    if e.end_at and e.end_at <= now():
+        return "The configured end has already passed."
+    return None
+
+
+def summary(e):
+    state = settings()
+    ready = {r.user_id for r in QuestReadiness.query.all()}
+    users = Users.query.filter_by(type="user", banned=False).all()
+    reason = start_reason(e) if e.status == "draft" else "The event has already started."
+    locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
+    return {"phase": state.phase, "team_size": state.team_size,
+            "ready_count": sum(u.id in ready for u in users),
+            "pending_count": sum(u.id not in ready for u in users),
+            "unassigned_ready_count": sum(u.id in ready and not u.team_id for u in users),
+            "unnamed_count": sum(t.id not in locked for t in competing_teams()),
+            "can_start": reason is None, "start_reason": reason}
+
+
+def activity_teams():
+    ids = {row.team_id for row in QuestStart.query.all()}
+    for model in (Submissions, Awards, Unlocks):
+        ids.update(tid for tid, in model.query.with_entities(model.team_id).filter(model.team_id.isnot(None)).distinct().all())
+    return ids
+
+
+def fingerprint(e):
+    state = settings()
+    locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
+    payload = {"phase": state.phase, "team_size": state.team_size, "event": [e.status, e.name, iso(e.start_at), iso(e.end_at), iso(e.rosters_release_at), e.room_clock, e.overall_clock],
+               "users": [(u.id, u.name, u.type, u.banned, u.team_id) for u in Users.query.order_by(Users.id).all()],
+               "ready": [(r.user_id, iso(r.ready_at), r.late) for r in QuestReadiness.query.order_by(QuestReadiness.user_id).all()],
+               "teams": [(t.id, t.name, t.banned, t.hidden, t.id in locked) for t in Teams.query.order_by(Teams.id).all()],
+               "activity": sorted(activity_teams())}
+    key = current_app.config["SECRET_KEY"]
+    key = key.encode() if isinstance(key, str) else key
+    return hmac.new(key, json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(), hashlib.sha256).hexdigest()
+
+
+def preview(e):
+    state = settings()
+    if e.status != "draft" or state.phase != "closed":
+        raise OnboardingError("Close check-in before previewing attendance optimization; it is unavailable after apply.")
+    ready = {r.user_id for r in QuestReadiness.query.all()}
+    all_users = Users.query.order_by(Users.id).all()
+    attendees = [u for u in all_users if eligible(u) and u.id in ready]
+    if not attendees:
+        raise OnboardingError("No ready eligible participants are available. Record attendance before optimizing.")
+    teams = Teams.query.order_by(Teams.id).all()
+    protected = activity_teams()
+    for team in teams:
+        if team.id in protected and any(not eligible(u) or u.id not in ready for u in team.members):
+            raise OnboardingError(f"Team '{team.name}' has activity and absent or ineligible members. Resolve its attendance before optimizing; no history was changed.")
+        if team.id in protected and (team.banned or team.hidden) and team.members:
+            raise OnboardingError(f"Team '{team.name}' has activity but is hidden or banned. Resolve that team before optimizing.")
+    candidates = [{"id": t.id, "name": t.name} for t in teams if not t.hidden and not t.banned]
+    try:
+        groups, warnings = optimize([u.id for u in attendees], {u.id: u.team_id for u in attendees}, candidates, state.team_size, protected)
+    except ValueError as exc:
+        raise OnboardingError(str(exc))
+    moves = [{"user_id": uid, "from_team_id": next(u.team_id for u in attendees if u.id == uid), "to_group": index}
+             for index, group in enumerate(groups) for uid in group["user_ids"]
+             if group["team_id"] is None or next(u.team_id for u in attendees if u.id == uid) != group["team_id"]]
+    return {"fingerprint": fingerprint(e), "groups": groups, "moves": moves,
+            "unassigned_user_ids": [u.id for u in all_users if u.type == "user" and u.id not in {a.id for a in attendees}], "warnings": warnings}

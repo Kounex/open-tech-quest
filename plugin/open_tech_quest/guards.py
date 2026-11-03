@@ -7,6 +7,7 @@ from CTFd.utils.user import get_current_user, is_admin
 from CTFd.utils.security.signing import unserialize, BadSignature, BadTimeSignature, SignatureExpired
 from .models import QuestStep, QuestStart
 from .service import event, now, released, solve_map
+from . import onboarding
 
 
 def denied(message, status=403):
@@ -23,6 +24,12 @@ def install_guards(app):
         data = data if isinstance(data, dict) or hasattr(data, "get") else {}
         if path == "/":
             return redirect("/quest")
+        if write and (path in ("/register", "/settings") or path.startswith("/api/v1/users")):
+            # Registration and account edits participate in the attendance
+            # fingerprint transaction while native credential handling stays.
+            event(lock=True)
+        if path in ("/teams/new", "/teams/join", "/teams/invite"):
+            return denied("Team allocation and naming are managed through Open Tech Quest")
         if path == "/team":
             user = get_current_user()
             if user and not user.team_id:
@@ -53,11 +60,20 @@ def install_guards(app):
                     changed = changed or any(k in data and str(data[k]) != str(getattr(challenge, k)) for k in ("next_id", "position"))
                     if request.method == "DELETE" or changed:
                         return denied("Manage mapped challenge topology through Open Tech Quest room settings", 409)
-            membership_write = path.startswith("/api/v1/teams") or (
-                path.startswith("/api/v1/users/") and ("team_id" in data or request.method == "DELETE")
-            )
-            if write and membership_write and event(lock=True).status != "draft":
-                return denied("Team membership and identity are locked after draft", 409)
+            if write and path.startswith("/api/v1/teams"):
+                e = event(lock=True)
+                moderation = request.method == "PATCH" and re.fullmatch(r"/api/v1/teams/\d+", path) and set(data) <= {"hidden", "banned"}
+                if not moderation or e.status != "draft" or onboarding.settings().phase not in ("check_in", "closed"):
+                    return denied("Use Open Tech Quest team controls for capacity, roster and reasoned name changes", 409)
+            user_match = re.fullmatch(r"/api/v1/users/(\d+)", path)
+            if write and user_match and "type" in data:
+                target = Users.query.get(int(user_match[1]))
+                if target and target.team_id and data["type"] != target.type and onboarding.settings().phase in ("naming", "finalized"):
+                    return denied("An assigned participant's account role is frozen after optimization; unassign while rosters are editable first", 409)
+            if write and path.startswith("/api/v1/users/") and ("team_id" in data or request.method == "DELETE"):
+                e = event()
+                if e.status != "draft" or onboarding.settings().phase not in ("check_in", "closed"):
+                    return denied("Team membership and identity are frozen after attendance optimization", 409)
             if write and path.startswith("/api/v1/submissions") and event(lock=True).status != "draft":
                 submission_match = re.fullmatch(r"/api/v1/submissions/(\d+)", path)
                 submission = Submissions.query.get(int(submission_match[1])) if submission_match else None

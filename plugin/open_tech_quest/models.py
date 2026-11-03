@@ -103,3 +103,28 @@ class QuestDemoChallenge(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     batch_id = db.Column(db.Integer, db.ForeignKey("quest_demo_batches.id", ondelete="CASCADE"), nullable=False)
     challenge_id = db.Column(db.Integer, db.ForeignKey("challenges.id", ondelete="SET NULL"), unique=True)
+
+
+class QuestOnboarding(db.Model):
+    __tablename__ = "quest_onboarding"
+    id = db.Column(db.Integer, primary_key=True)
+    phase = db.Column(db.String(16), nullable=False, default="check_in")
+    team_size = db.Column(db.Integer, nullable=False, default=5)
+    applied_at = db.Column(UTCDateTime)
+    finalized_at = db.Column(UTCDateTime)
+    grandfathered = db.Column(db.Boolean, nullable=False, default=False)
+
+
+class QuestReadiness(db.Model):
+    __tablename__ = "quest_readiness"
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    ready_at = db.Column(UTCDateTime, nullable=False, default=datetime.utcnow)
+    late = db.Column(db.Boolean, nullable=False, default=False)
+
+
+class QuestTeamName(db.Model):
+    __tablename__ = "quest_team_names"
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True)
+    claimed_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+    claimed_at = db.Column(UTCDateTime)
+    name_locked = db.Column(db.Boolean, nullable=False, default=False)
