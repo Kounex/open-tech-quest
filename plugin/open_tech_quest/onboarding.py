@@ -176,7 +176,7 @@ def preview(e):
             raise OnboardingError(f"Team '{team.name}' has activity but is hidden or banned. Resolve that team before optimizing.")
     candidates = [{"id": t.id, "name": t.name} for t in teams if not t.hidden and not t.banned]
     try:
-        groups, warnings = optimize([u.id for u in attendees], {u.id: u.team_id for u in attendees}, candidates, state.team_size, protected)
+        groups, warnings = optimize([u.id for u in attendees], {u.id: u.team_id for u in attendees}, candidates, state.team_size, protected, [t.name for t in teams])
     except ValueError as exc:
         raise OnboardingError(str(exc))
     moves = [{"user_id": uid, "from_team_id": next(u.team_id for u in attendees if u.id == uid), "to_group": index}

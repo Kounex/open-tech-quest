@@ -2,7 +2,7 @@
 import math
 
 
-def optimize(ready_ids, memberships, teams, capacity, protected_ids=()):
+def optimize(ready_ids, memberships, teams, capacity, protected_ids=(), reserved_names=()):
     """Return selected bins and assignment; user IDs belong to exactly one bin.
 
     Candidate teams are ranked by retained attendance. Selecting the largest
@@ -31,7 +31,8 @@ def optimize(ready_ids, memberships, teams, capacity, protected_ids=()):
         len(members[t["id"]]) != capacity, t["id"]))
     selected = candidates[:count]
     groups = [{"team_id": t["id"], "name": t["name"], "user_ids": members[t["id"]][:maximum]} for t in selected]
-    existing_names = {t["name"].casefold() for t in teams}
+    existing_names = {name.casefold() for name in reserved_names}
+    existing_names.update(t["name"].casefold() for t in teams)
     number = 1
     while len(groups) < count:
         while f"Team {number:02}".casefold() in existing_names:

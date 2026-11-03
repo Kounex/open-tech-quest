@@ -1157,3 +1157,37 @@ class QuestIntegration(unittest.TestCase):
         self.assertIn("placeholder",response.json["error"])
         alice = self.alice.get(PREFIX+"/onboarding").json["data"]
         self.assertEqual(self.post(self.alice,PREFIX+"/onboarding/name",{"name":alice["team"]["name"],"confirm":True}).status_code,200)
+
+    def test_onboarding_hidden_team_names_remain_reserved_when_creating_replacement(self):
+        self.open_onboarding()
+        with self.app.app_context():
+            password = Users.query.get(2).password
+            for uid in range(5,23):
+                db.session.execute(Users.__table__.insert(), {"id":uid,"name":f"Attendee {uid}","email":f"attendee{uid}@example.test","password":password,"type":"user"})
+            teams = Teams.query.order_by(Teams.id).all()
+            for index in range(3):
+                team = Teams(name=f"Team {index+3:02}")
+                db.session.add(team)
+                db.session.flush()
+                teams.append(team)
+            for index,team in enumerate(teams,1):
+                team.name = f"Team {index:02}"
+            hidden_id = teams[0].id
+            for index,uid in enumerate(range(2,23)):
+                Users.query.get(uid).team_id = teams[index//5].id
+                db.session.add(QuestReadiness(user_id=uid))
+            db.session.commit()
+        self.assertEqual(self.post(self.admin,f"/api/v1/teams/{hidden_id}",{"hidden":True},"PATCH").status_code,200)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        plan = self.attendance_plan()
+        fresh = [group for group in plan["groups"] if group["team_id"] is None]
+        self.assertEqual(len(fresh),1)
+        self.assertEqual(fresh[0]["name"],"Team 06")
+        self.apply_attendance(plan)
+        with self.app.app_context():
+            self.assertTrue(Teams.query.get(hidden_id).hidden)
+            self.assertEqual(Teams.query.get(hidden_id).name,"Team 01")
+            self.assertEqual(Teams.query.count(),6)
+            self.assertEqual(Users.query.filter(Users.type=="user",Users.team_id.isnot(None)).count(),21)
+            self.assertEqual(Teams.query.filter_by(name="Team 06").count(),1)
+            self.assertEqual(QuestReadiness.query.count(),21)
