@@ -512,3 +512,12 @@ class QuestIntegration(unittest.TestCase):
             self.assertEqual(result.status_code, 409, result.get_data(as_text=True))
             db.session.expire_all()
             self.assertEqual(Users.query.get(5).team_id, self.team_id)
+
+    def test_empty_event_cannot_start_and_freeze_authoring(self):
+        self.configure([])
+        response = self.post(self.admin, PREFIX + "/admin/event/action", {"action": "start"})
+        self.assertEqual(response.status_code, 409, response.get_data(as_text=True))
+        self.assertIn("Configure at least one room challenge", response.json["error"])
+        self.assertEqual(self.admin.get(PREFIX + "/admin/state").json["data"]["event"]["status"], "draft")
+        self.configure([1])
+        self.action("start")

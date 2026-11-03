@@ -260,6 +260,8 @@ def event_action():
     action, at = data.get("action"), now()
     if action == "start":
         draft(e)
+        if QuestStep.query.first() is None:
+            fail("Configure at least one room challenge before starting the event", 409)
         if e.start_at and e.start_at > at:
             fail("The configured start is still in the future", 409)
         if e.end_at and e.end_at <= at:
