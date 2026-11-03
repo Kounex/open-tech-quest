@@ -82,7 +82,7 @@ from Doppler through External Secrets. No organizer API token is embedded in
 the browser. Player actions use native CTFd sessions and CSRF protection.
 
 See [operations](docs/operations.md), [the product contract](docs/design.md),
-[release verification](docs/validation.md) and [delivery plan](docs/implementation.md).
+[release verification](docs/onboarding-validation.md) and [delivery plan](docs/implementation.md).
 
 This is an independent event application, not an official Red Hat product.
 Red Hat and product marks retain their respective owners' rights. Runtime
