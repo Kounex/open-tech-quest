@@ -37,6 +37,18 @@
 8. Configure SMTP before relying on password reset/email verification. It is
    an event deployment setting; no mail credentials belong in this repo.
 
+## Opening and closing registration
+
+Use **Organize → Event → Public registration** to open or close new account
+signups. The displayed state comes from CTFd's own registration setting and
+survives restarts. Changes are confirmed and audited. Closing signup also blocks
+an already-loaded registration form from creating a new account.
+
+Existing accounts can still sign in and check in where attendance is open.
+Registration, attendance check-in and competition start are separate controls.
+Reopening signup after roster finalization does not change the competing teams;
+new accounts remain unassigned. See [registration.md](registration.md).
+
 ## Attendance and final teams
 
 The **Teams** organizer view shows participant names, email, attendance and team
