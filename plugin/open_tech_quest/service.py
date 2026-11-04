@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import exists, or_
 from CTFd.models import Awards, Challenges, Solves, Submissions, Teams, Unlocks, Users
 from .models import (QuestEvent, QuestRoom, QuestStep, QuestStart, QuestPause,
-                     QuestExclusion, QuestCorrection)
+                     QuestExclusion, QuestCorrection, QuestMaintainer)
 from .ranking import active_ms, prefix, assign_ranks
 
 
@@ -90,7 +90,8 @@ class Projection:
         e = self.event
         # Imported, pre-start, paused, unmapped and after-cutoff solves do not
         # qualify. Never rewrite the native source timestamps to correct time.
-        query = Solves.query.with_entities(Solves.team_id, Solves.challenge_id, Solves.date).filter(Solves.team_id.isnot(None), Solves.challenge_id.in_(list(self.mapped)))
+        query = Solves.query.with_entities(Solves.team_id, Solves.challenge_id, Solves.date).filter(Solves.team_id.isnot(None), Solves.challenge_id.in_(list(self.mapped)),
+                    ~Solves.user_id.in_(QuestMaintainer.query.with_entities(QuestMaintainer.user_id)))
         for team_id, challenge_id, at in query.all():
             room_id = self.mapped[challenge_id]
             start = self.starts.get((team_id, room_id))

@@ -39,7 +39,8 @@ def settings():
 
 
 def eligible(user):
-    return user.type == "user" and not user.banned
+    from .roles import is_maintainer
+    return user.type == "user" and not user.banned and not is_maintainer(user)
 
 
 def is_locked(team_id):
@@ -120,7 +121,7 @@ def finalization_reason():
     if state.attendance_open:
         return "Close attendance capture before finalizing team rosters."
     ready = {r.user_id for r in QuestReadiness.query.all()}
-    users = Users.query.filter_by(type="user", banned=False).all()
+    users = [u for u in Users.query.filter_by(type="user", banned=False).all() if eligible(u)]
     teams = {team.id: team for team in Teams.query.all()}
     locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
     if not any(user.id in ready for user in users):
@@ -133,8 +134,9 @@ def finalization_reason():
         if user.id in ready and user.team_id and (teams[user.team_id].banned or teams[user.team_id].hidden):
             return "Ready participants must belong to visible, non-banned teams."
     for team in teams.values():
-        if any(user.type != "user" for user in team.members):
-            return "Remove administrator accounts from participant teams before finalizing."
+        from .roles import is_maintainer
+        if any(user.type != "user" or is_maintainer(user) for user in team.members):
+            return "Remove staff accounts from participant teams before finalizing."
         if len(team.members) > state.team_size:
             return "A team exceeds the configured capacity."
     if any(team.id not in locked for team in teams.values() if not team.hidden and not team.banned and any(eligible(user) for user in team.members)):
@@ -169,7 +171,7 @@ def start_reason(e):
 def summary(e):
     state = settings()
     ready = {r.user_id for r in QuestReadiness.query.all()}
-    users = Users.query.filter_by(type="user", banned=False).all()
+    users = [u for u in Users.query.filter_by(type="user", banned=False).all() if eligible(u)]
     reason = start_reason(e) if e.status == "draft" else "The event has already started."
     locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
     return {"phase": state.phase, "team_size": state.team_size, "attendance": attendance(e, state),
@@ -188,6 +190,7 @@ def activity_teams():
 
 
 def fingerprint(e):
+    from .models import QuestMaintainer
     state = settings()
     locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
     payload = {"phase": state.phase, "team_size": state.team_size,
@@ -195,7 +198,8 @@ def fingerprint(e):
                "users": [(u.id, u.name, u.type, u.banned, u.team_id) for u in Users.query.order_by(Users.id).all()],
                "ready": [(r.user_id, iso(r.ready_at), r.late) for r in QuestReadiness.query.order_by(QuestReadiness.user_id).all()],
                "teams": [(t.id, t.name, t.banned, t.hidden, t.id in locked) for t in Teams.query.order_by(Teams.id).all()],
-               "activity": sorted(activity_teams())}
+               "activity": sorted(activity_teams()),
+               "maintainers": [row.user_id for row in QuestMaintainer.query.order_by(QuestMaintainer.user_id).all()]}
     key = current_app.config["SECRET_KEY"]
     key = key.encode() if isinstance(key, str) else key
     return hmac.new(key, json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(), hashlib.sha256).hexdigest()
@@ -228,4 +232,4 @@ def preview(e):
              for index, group in enumerate(groups) for uid in group["user_ids"]
              if group["team_id"] is None or next(u.team_id for u in attendees if u.id == uid) != group["team_id"]]
     return {"fingerprint": fingerprint(e), "groups": groups, "moves": moves,
-            "unassigned_user_ids": [u.id for u in all_users if u.type == "user" and u.id not in {a.id for a in attendees}], "warnings": warnings}
+            "unassigned_user_ids": [u.id for u in all_users if eligible(u) and u.id not in {a.id for a in attendees}], "warnings": warnings}

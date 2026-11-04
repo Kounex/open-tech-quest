@@ -132,3 +132,10 @@ class QuestTeamName(db.Model):
     claimed_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
     claimed_at = db.Column(UTCDateTime)
     name_locked = db.Column(db.Boolean, nullable=False, default=False)
+
+
+class QuestMaintainer(db.Model):
+    __tablename__ = "quest_maintainers"
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    previous_hidden = db.Column(db.Boolean, nullable=False)
+    granted_at = db.Column(UTCDateTime, nullable=False, default=datetime.utcnow)

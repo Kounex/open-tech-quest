@@ -7,7 +7,7 @@ from CTFd.utils.user import get_current_user, is_admin
 from CTFd.utils.security.signing import unserialize, BadSignature, BadTimeSignature, SignatureExpired
 from .models import QuestStep, QuestStart
 from .service import event, now, released, solve_map
-from . import onboarding, registration
+from . import onboarding, registration, roles
 
 
 def denied(message, status=403):
@@ -86,6 +86,13 @@ def install_guards(app):
                 if not moderation or e.status != "draft" or onboarding.settings().phase not in ("check_in", "closed"):
                     return denied("Use Open Tech Quest team controls for capacity, roster and reasoned name changes", 409)
             user_match = re.fullmatch(r"/api/v1/users/(\d+)", path)
+            if write and user_match:
+                target = Users.query.get(int(user_match[1]))
+                if target and roles.is_maintainer(target):
+                    if (("team_id" in data and data["team_id"] is not None)
+                            or ("hidden" in data and data["hidden"] is not True)
+                            or ("type" in data and data["type"] != target.type)):
+                        return denied("Revoke maintainer access through Open Tech Quest before changing staff participation or visibility", 409)
             if write and user_match and "type" in data:
                 target = Users.query.get(int(user_match[1]))
                 if target and target.team_id and data["type"] != target.type and onboarding.settings().phase in ("naming", "finalized"):
@@ -170,6 +177,8 @@ def install_guards(app):
         user = token_user or get_current_user()
         if user is None:
             return denied("Sign in to open a challenge", 401)
+        if not onboarding.eligible(user):
+            return denied("Only eligible participants may access native challenge attempts, hints or unlocks")
         if not user.team_id:
             return denied("An organizer must assign you to a team")
         e = event(lock=attempt)

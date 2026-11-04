@@ -19,10 +19,10 @@ from unittest.mock import patch
 from CTFd import create_app
 from CTFd.config import TestingConfig
 from CTFd.cache import cache
-from CTFd.models import ChallengeFiles, Challenges, Configs, Flags, Hints, Solves, Teams, Users, db
+from CTFd.models import ChallengeFiles, Challenges, Configs, Flags, Hints, Solves, Submissions, Teams, Users, db
 from CTFd.utils import get_config, set_config
 from CTFd.plugins.open_tech_quest.models import (QuestEvent, QuestRoom, QuestStep,
-    QuestStart, QuestPause, QuestAudit, QuestOnboarding, QuestReadiness, QuestTeamName)
+    QuestStart, QuestPause, QuestAudit, QuestOnboarding, QuestReadiness, QuestTeamName, QuestMaintainer)
 from CTFd.plugins.open_tech_quest.service import standings
 
 PREFIX = "/api/v1/quest"
@@ -53,6 +53,7 @@ class QuestIntegration(unittest.TestCase):
             assert QuestOnboarding.query.get(1).attendance_open is False
             assert QuestOnboarding.query.get(1).attendance_generation == 0
             assert QuestReadiness.query.count() == 0
+            assert QuestMaintainer.query.count() == 0
 
     @classmethod
     def tearDownClass(cls):
@@ -640,7 +641,8 @@ class QuestIntegration(unittest.TestCase):
         self.load_demo()
         room = self.admin.get(PREFIX + "/rooms/openshift").json["data"]
         demo_ids = [step["id"] for step in room["steps"]]
-        self.configure([demo_ids[0], 1, demo_ids[1], 2])
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/rooms/openshift",{"challenge_ids":[demo_ids[0],1,demo_ids[1],2]},"PATCH").status_code,409)
+        self.fixture_external_chain("openshift",[demo_ids[0],1,demo_ids[1],2])
         result = self.post(self.admin, PREFIX + "/admin/demo", {"action": "unload"})
         self.assertEqual(result.status_code, 200, result.get_data(as_text=True))
         self.assertFalse(result.json["data"]["can_load"])
@@ -705,7 +707,7 @@ class QuestIntegration(unittest.TestCase):
         with self.app.app_context():
             room = QuestRoom.query.filter_by(slug="openshift").one()
             ids = [step.challenge_id for step in QuestStep.query.filter_by(room_id=room.id).order_by(QuestStep.position).all()]
-        self.configure(ids[:-1])
+        self.fixture_external_chain("openshift",ids[:-1])
         self.assertEqual(self.post(self.admin, f"/api/v1/challenges/{ids[-1]}", {}, "DELETE").status_code, 200)
         with self.app.app_context():
             db.session.add(Challenges(id=ids[-1], name="Real replacement", description="Real organizer content", type="standard", state="visible", value=100))
@@ -770,8 +772,7 @@ class QuestIntegration(unittest.TestCase):
         with self.app.app_context():
             room = QuestRoom.query.filter_by(slug="ai").one()
             ids = [step.challenge_id for step in QuestStep.query.filter_by(room_id=room.id).order_by(QuestStep.position).all()]
-        response = self.post(self.admin, PREFIX + "/admin/rooms/ai", {"challenge_ids": ids[:-1]}, "PATCH")
-        self.assertEqual(response.status_code, 200)
+        self.fixture_external_chain("ai",ids[:-1])
         from CTFd.plugins.open_tech_quest.demo import owned_ids as original_owned_ids
         entered, release = threading.Event(), threading.Event()
         local = threading.local()
@@ -1760,3 +1761,324 @@ class QuestIntegration(unittest.TestCase):
                     migration.upgrade(Operations(MigrationContext.configure(connection)))
         self.assertEqual(self.alice.get(PREFIX+"/onboarding").json["data"]["attendance"],first)
         self.assertEqual(self.alice.get(PREFIX+"/onboarding").json["data"]["ready_at"],timestamp)
+
+    def grant_role(self, uid=2, role="maintainer"):
+        return self.post(self.admin,PREFIX+f"/admin/users/{uid}/role",{"role":role,"confirm":True},"PATCH")
+
+    def fixture_external_chain(self, slug, ids):
+        # Simulate legacy/external edits for defensive demo ownership tests.
+        # Current HTTP management intentionally forbids changing active demos.
+        with self.app.app_context():
+            room = QuestRoom.query.filter_by(slug=slug).one()
+            for step in QuestStep.query.filter_by(room_id=room.id).all():
+                challenge = Challenges.query.get(step.challenge_id)
+                challenge.requirements,challenge.next_id = None,None
+                db.session.delete(step)
+            db.session.flush()
+            for position,cid in enumerate(ids):
+                challenge = Challenges.query.get(cid)
+                challenge.requirements = {"prerequisites":ids[:position],"anonymize":False}
+                challenge.next_id = ids[position+1] if position+1<len(ids) else None
+                challenge.position = position
+                db.session.add(QuestStep(room_id=room.id,challenge_id=cid,position=position))
+            db.session.commit()
+
+    def test_maintainer_admin_only_strict_roles_and_safe_room_overview(self):
+        self.open_onboarding()
+        endpoint = PREFIX+"/admin/users/2/role"
+        self.assertEqual(self.guest.get(PREFIX+"/admin/users").status_code,401)
+        self.assertEqual(self.alice.get(PREFIX+"/admin/users").status_code,403)
+        self.assertEqual(self.post(self.alice,endpoint,{"role":"maintainer","confirm":True},"PATCH").status_code,403)
+        self.assertEqual(self.admin.patch(endpoint,json={"role":"maintainer","confirm":True}).status_code,403)
+        for body in ({"role":"admin","confirm":True},{"role":"maintainer"},{"role":"maintainer","confirm":1},{"role":"maintainer","confirm":True,"hidden":False}):
+            self.assertEqual(self.post(self.admin,endpoint,body,"PATCH").status_code,400)
+        self.assertEqual(self.grant_role(1).status_code,409)
+        self.assertEqual(self.grant_role(999).status_code,404)
+        self.assertEqual(self.grant_role().status_code,200)
+        viewer = self.alice.get(PREFIX+"/bootstrap").json["data"]["viewer"]
+        self.assertEqual(viewer["role"],"maintainer")
+        self.assertTrue(viewer["can_manage_rooms"])
+        self.assertFalse(viewer["can_manage_users"])
+        self.assertFalse(viewer["admin"])
+        overview = self.alice.get(PREFIX+"/manage/rooms")
+        self.assertEqual(overview.status_code,200)
+        self.assertEqual(set(overview.json["data"]),{"event","rooms","available_challenges"})
+        serialized = overview.get_data(as_text=True)
+        for private in ("@example.test","fixture-answer","Private instructions","participants","audit"):
+            self.assertNotIn(private,serialized)
+        self.assertEqual(overview.json["data"]["rooms"][0]["challenge_ids"],[1,2])
+        for path in ("/admin/state","/admin/users","/admin/export"):
+            self.assertEqual(self.alice.get(PREFIX+path).status_code,403)
+        self.assertNotEqual(self.alice.get("/admin").status_code,200)
+        self.assertEqual(self.alice.get("/api/v1/users?view=admin&field=email&q=example").status_code,400)
+        for path,body,method in (("/admin/registration",{"enabled":False},"PATCH"),("/admin/attendance",{"enabled":True},"PATCH"),("/admin/event/action",{"action":"start"},"POST"),("/admin/projector",{"view":"overall"},"PATCH"),("/admin/teams/allocate",{"preview":True},"POST"),("/admin/users/3/role",{"role":"maintainer","confirm":True},"PATCH")):
+            self.assertEqual(self.post(self.alice,PREFIX+path,body,method).status_code,403,path)
+        self.assertEqual(self.post(self.alice,PREFIX+"/admin/rooms/openshift",{"subtitle":"Maintainer edit"},"PATCH").status_code,200)
+        self.assertEqual(self.post(self.alice,"/api/v1/challenges/1",{"description":"Native forbidden"},"PATCH").status_code,403)
+        users = self.admin.get(PREFIX+"/admin/users").json["data"]["users"]
+        self.assertEqual(len(users),4)
+        self.assertEqual(users[0]["role"],"administrator")
+        self.assertFalse(users[0]["can_change_role"])
+        self.assertEqual(users[1]["role"],"maintainer")
+        self.assertTrue(users[1]["can_change_role"])
+
+    def test_maintainer_transitions_preserve_team_hidden_values_and_idempotence(self):
+        self.open_onboarding()
+        self.attendance_window(True)
+        self.ready_user(self.alice)
+        self.ready_user(self.bob)
+        with self.app.app_context():
+            team = Teams.query.get(self.team_id)
+            team.captain_id = 2
+            db.session.commit()
+        changed = self.grant_role()
+        self.assertEqual(changed.status_code,200,changed.get_data(as_text=True))
+        self.assertIsNone(changed.json["data"]["team_id"])
+        self.assertIsNone(changed.json["data"]["ready_at"])
+        with self.app.app_context():
+            self.assertEqual(Users.query.get(2).type,"user")
+            self.assertTrue(Users.query.get(2).hidden)
+            self.assertFalse(QuestMaintainer.query.get(2).previous_hidden)
+            self.assertEqual(Users.query.get(3).team_id,self.team_id)
+            self.assertEqual(Teams.query.get(self.team_id).captain_id,3)
+            self.assertIsNotNone(QuestReadiness.query.get(3))
+            granted_at = QuestMaintainer.query.get(2).granted_at
+        self.assertEqual(self.grant_role().status_code,200)
+        with self.app.app_context():
+            self.assertEqual(QuestMaintainer.query.get(2).granted_at,granted_at)
+            self.assertEqual(QuestAudit.query.filter_by(action="user.role").count(),1)
+        self.assertNotIn(2,[u["id"] for u in self.guest.get("/api/v1/users").json["data"]])
+        self.assertEqual(self.grant_role(role="participant").status_code,200)
+        with self.app.app_context():
+            self.assertFalse(Users.query.get(2).hidden)
+            self.assertIsNone(Users.query.get(2).team_id)
+            self.assertIsNone(QuestReadiness.query.get(2))
+            self.assertEqual(QuestAudit.query.filter_by(action="user.role").count(),2)
+        self.ready_user(self.alice)
+        with self.app.app_context():
+            ready_at = QuestReadiness.query.get(2).ready_at
+        self.assertEqual(self.grant_role(role="participant").status_code,200)
+        with self.app.app_context():
+            self.assertEqual(QuestReadiness.query.get(2).ready_at,ready_at)
+            user = Users.query.get(4)
+            user.hidden = True
+            db.session.commit()
+        self.assertEqual(self.grant_role(4).status_code,200)
+        self.assertEqual(self.grant_role(4,"participant").status_code,200)
+        with self.app.app_context():
+            self.assertTrue(Users.query.get(4).hidden)
+
+    def test_maintainer_promotion_activity_and_optimized_roster_restrictions(self):
+        self.open_onboarding()
+        with self.app.app_context():
+            db.session.add(QuestStart(team_id=self.team_id,room_id=QuestRoom.query.filter_by(slug="openshift").one().id))
+            db.session.commit()
+        rejected = self.grant_role()
+        self.assertEqual(rejected.status_code,409)
+        self.assertIn("activity",rejected.json["error"])
+        with self.app.app_context():
+            QuestStart.query.delete()
+            QuestOnboarding.query.get(1).phase = "naming"
+            db.session.commit()
+        self.assertEqual(self.grant_role().status_code,409)
+        with self.app.app_context():
+            Users.query.get(2).team_id = None
+            QuestEvent.query.get(1).status = "live"
+            db.session.commit()
+        self.assertEqual(self.grant_role().status_code,200)
+        self.assertEqual(self.grant_role(role="participant").status_code,200)
+        with self.app.app_context():
+            db.session.add(Solves(challenge_id=1,user_id=2,team_id=self.team_id))
+            db.session.commit()
+        self.assertEqual(self.grant_role().status_code,409)
+        with self.app.app_context():
+            self.assertEqual(Solves.query.count(),1)
+            self.assertIsNone(QuestMaintainer.query.get(2))
+
+    def test_maintainer_staff_excluded_from_readiness_allocation_and_stale_plans(self):
+        self.open_onboarding()
+        self.attendance_window(True)
+        self.ready_user(self.alice)
+        self.ready_user(self.bob)
+        self.ready_user(self.carol)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        stale = self.attendance_plan()
+        self.assertEqual(self.grant_role().status_code,200)
+        self.assertEqual(self.alice.get(PREFIX+"/onboarding").status_code,403)
+        self.assertEqual(self.post(self.alice,PREFIX+"/onboarding/ready",{}).status_code,403)
+        self.assertEqual(self.post(self.alice,PREFIX+"/onboarding/name",{"name":"Staff","confirm":True}).status_code,403)
+        self.assertEqual(self.alice.get(PREFIX+"/bootstrap",headers={"Sec-Fetch-Dest":"empty"}).status_code,200)
+        state = self.admin.get(PREFIX+"/admin/state").json["data"]
+        self.assertNotIn(2,[u["id"] for u in state["participants"]])
+        self.assertEqual(state["onboarding"]["ready_count"],2)
+        self.assertEqual(state["onboarding"]["pending_count"],0)
+        apply = self.post(self.admin,PREFIX+"/admin/onboarding/optimize",{"preview":False,"fingerprint":stale["fingerprint"]})
+        self.assertEqual(apply.status_code,409)
+        plan = self.attendance_plan()
+        self.assertNotIn(2,[uid for group in plan["groups"] for uid in group["user_ids"]])
+        self.assertNotIn(2,plan["unassigned_user_ids"])
+        self.apply_attendance(plan)
+        self.assertEqual(self.post(self.bob,PREFIX+"/onboarding/name",{"name":"Real participants","confirm":True}).status_code,200)
+        self.assertEqual(self.onboarding_action("finalize").status_code,200)
+        self.action("start")
+        self.assertEqual(self.post(self.alice,PREFIX+"/rooms/openshift/start",{}).status_code,403)
+        self.assertEqual(self.solve(self.alice,1).status_code,403)
+        self.assertEqual(self.post(self.alice,"/api/v1/unlocks",{"type":"hints","target":1}).status_code,403)
+        self.assertEqual(self.grant_role(role="participant").status_code,200)
+        self.assertEqual(self.post(self.alice,PREFIX+"/onboarding/ready",{}).status_code,409)
+
+    def test_maintainer_native_staff_assignment_visibility_and_banned_permissions(self):
+        self.open_onboarding()
+        self.assertEqual(self.grant_role().status_code,200)
+        for body in ({"team_id":self.team_id},{"hidden":False},{"type":"admin"}):
+            response = self.post(self.admin,"/api/v1/users/2",body,"PATCH")
+            self.assertEqual(response.status_code,409,response.get_data(as_text=True))
+        self.assertEqual(self.post(self.admin,PREFIX+f"/admin/teams/{self.team_id}",{"user_ids":[2,3]},"PATCH").status_code,400)
+        self.assertEqual(self.post(self.admin,"/api/v1/users/2",{"banned":True},"PATCH").status_code,200)
+        from CTFd.plugins.open_tech_quest.roles import can_manage_rooms
+        with self.app.app_context():
+            self.assertFalse(can_manage_rooms(Users.query.get(2)))
+        # Native CTFd may redirect a banned account before plugin authorization.
+        self.assertIn(self.alice.get(PREFIX+"/manage/rooms").status_code,(302,403))
+        self.assertIn(self.post(self.alice,PREFIX+"/admin/rooms/openshift",{"name":"Forbidden"},"PATCH").status_code,(302,403))
+        self.assertEqual(self.grant_role(role="participant").status_code,200)
+
+    def test_maintainer_revocation_applies_to_open_sessions_and_waiting_room_writes(self):
+        self.open_onboarding()
+        self.assertEqual(self.grant_role().status_code,200)
+        self.assertEqual(self.alice.get(PREFIX+"/manage/rooms").status_code,200)
+        from CTFd.plugins.open_tech_quest import api as api_module
+        original = api_module.event
+        entered,release = threading.Event(),threading.Event()
+        def gate(lock=False):
+            from flask import request
+            if lock and request.path.endswith("/admin/rooms/openshift"):
+                entered.set()
+                if not release.wait(3):
+                    raise RuntimeError("Room role gate not released")
+            return original(lock=lock)
+        with patch.object(api_module,"event",side_effect=gate):
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                editing = pool.submit(lambda:self.post(self.client(2),PREFIX+"/admin/rooms/openshift",{"subtitle":"Stale privileged tab"},"PATCH"))
+                try:
+                    self.assertTrue(entered.wait(3))
+                    self.assertEqual(self.grant_role(role="participant").status_code,200)
+                finally:
+                    release.set()
+                self.assertEqual(editing.result().status_code,403)
+        self.assertEqual(self.alice.get(PREFIX+"/manage/rooms").status_code,403)
+        with self.app.app_context():
+            self.assertNotEqual(QuestRoom.query.filter_by(slug="openshift").one().subtitle,"Stale privileged tab")
+
+    def test_maintainer_grants_upgrade_and_native_user_delete_cascade(self):
+        from CTFd.plugins.migrations import upgrade
+        from sqlalchemy import inspect
+        with self.app.app_context():
+            db.session.remove()
+            QuestMaintainer.__table__.drop(bind=db.engine)
+            set_config("open_tech_quest_alembic_version","quest_0005")
+            before = [(u.id,u.name,u.type,u.team_id) for u in Users.query.order_by(Users.id).all()]
+            upgrade(plugin_name="open_tech_quest")
+            self.assertIn("quest_maintainers",inspect(db.engine).get_table_names())
+            self.assertEqual(QuestMaintainer.query.count(),0)
+            self.assertEqual([(u.id,u.name,u.type,u.team_id) for u in Users.query.order_by(Users.id).all()],before)
+        self.open_onboarding()
+        self.assertEqual(self.grant_role().status_code,200)
+        response = self.post(self.admin,"/api/v1/users/2",{},"DELETE")
+        self.assertEqual(response.status_code,200,response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertIsNone(QuestMaintainer.query.get(2))
+            self.assertIsNone(Users.query.get(2))
+
+    def test_dynamic_rooms_crud_security_native_content_preservation_and_zero_rooms(self):
+        self.open_onboarding()
+        self.assertEqual(self.grant_role().status_code,200)
+        endpoint = PREFIX+"/manage/rooms"
+        self.assertEqual(self.post(self.bob,endpoint,{"slug":"new","name":"No"}).status_code,403)
+        self.assertEqual(self.alice.post(endpoint,json={"slug":"new","name":"No"}).status_code,403)
+        for body in ({"slug":"Upper","name":"No"},{"slug":"bad/slug","name":"No"},{"slug":"new","name":""},{"slug":"new","name":"No","unknown":1},{"slug":"new","name":"No","theme":{"logo_url":"https://example.test/x"}}):
+            self.assertEqual(self.post(self.alice,endpoint,body).status_code,400)
+        created = self.post(self.alice,endpoint,{"slug":"containers-advanced","name":"Advanced containers","description":"## Team task"})
+        self.assertEqual(created.status_code,200,created.get_data(as_text=True))
+        room = created.json["data"]
+        self.assertEqual(room["theme"],{"layout":"generic","accent":"#00a6b2","logo_url":None,"hero_url":None})
+        self.assertEqual(room["position"],5)
+        self.assertEqual(self.post(self.alice,endpoint,{"slug":"containers-advanced","name":"Duplicate"}).status_code,409)
+        self.assertEqual(self.post(self.alice,PREFIX+"/admin/rooms/containers-advanced",{"name":"Renamed custom room","theme":{"layout":"generic"},"challenge_ids":[3]},"PATCH").status_code,200)
+        with self.app.app_context():
+            before = [(c.id,c.name,c.description,c.value) for c in Challenges.query.order_by(Challenges.id).all()]
+            flags = [(f.challenge_id,f.content) for f in Flags.query.order_by(Flags.id).all()]
+            QuestEvent.query.get(1).projector={"view":"room","room_slug":"containers-advanced"}
+            db.session.commit()
+        self.assertEqual(self.post(self.alice,endpoint+"/containers-advanced",{"confirm":False},"DELETE").status_code,400)
+        self.assertEqual(self.post(self.alice,endpoint+"/containers-advanced",{"confirm":True},"DELETE").status_code,200)
+        with self.app.app_context():
+            self.assertEqual([(c.id,c.name,c.description,c.value) for c in Challenges.query.order_by(Challenges.id).all()],before)
+            self.assertEqual([(f.challenge_id,f.content) for f in Flags.query.order_by(Flags.id).all()],flags)
+            self.assertIsNone(Challenges.query.get(3).requirements)
+            self.assertIsNone(Challenges.query.get(3).next_id)
+            self.assertIsNone(QuestStep.query.filter_by(challenge_id=3).first())
+            self.assertEqual(QuestEvent.query.get(1).projector,{"view":"overview","room_slug":None})
+        for slug in ("openshift","ansible","rhel","security","ai"):
+            self.assertEqual(self.post(self.alice,endpoint+"/"+slug,{"confirm":True},"DELETE").status_code,200)
+        self.assertEqual(self.alice.get(endpoint).json["data"]["rooms"],[])
+        self.assertEqual(self.guest.get(PREFIX+"/bootstrap").json["data"]["rooms"],[])
+        with self.app.app_context():
+            self.assertEqual(Challenges.query.count(),3)
+            self.assertEqual(QuestRoom.query.count(),0)
+        self.assertEqual(self.post(self.alice,endpoint,{"slug":"new-topic","name":"A new beginning"}).status_code,200)
+
+    def test_dynamic_rooms_lifecycle_activity_and_demo_deletion_guards(self):
+        from CTFd.plugins.open_tech_quest.models import QuestCorrection
+        with self.app.app_context():
+            room = QuestRoom.query.filter_by(slug="openshift").one()
+            db.session.add(QuestCorrection(team_id=self.team_id,room_id=room.id,adjustment_ms=1,reason="Preserve history"))
+            db.session.commit()
+        endpoint = PREFIX+"/manage/rooms/openshift"
+        refused = self.post(self.admin,endpoint,{"confirm":True},"DELETE")
+        self.assertEqual(refused.status_code,409)
+        with self.app.app_context():
+            self.assertIsNotNone(QuestRoom.query.filter_by(slug="openshift").first())
+            QuestCorrection.query.delete()
+            db.session.add(Solves(challenge_id=1,user_id=2,team_id=self.team_id))
+            db.session.commit()
+        self.assertEqual(self.post(self.admin,endpoint,{"confirm":True},"DELETE").status_code,409)
+        with self.app.app_context():
+            Submissions.query.delete()
+            db.session.commit()
+        self.configure([])
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/demo",{"action":"load"}).status_code,200)
+        self.assertEqual(self.post(self.admin,endpoint,{"confirm":True},"DELETE").status_code,409)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/demo",{"action":"unload"}).status_code,200)
+        self.configure([1,2])
+        self.action("start")
+        self.assertEqual(self.post(self.admin,PREFIX+"/manage/rooms",{"slug":"late-room","name":"Too late"}).status_code,409)
+        self.assertEqual(self.post(self.admin,endpoint,{"confirm":True},"DELETE").status_code,409)
+
+    def test_maintainer_initial_allocation_and_awards_exclude_staff(self):
+        from CTFd.plugins.open_tech_quest.service import now
+        self.open_onboarding()
+        self.assertEqual(self.grant_role().status_code,200)
+        with self.app.app_context():
+            db.session.add(Users(id=5,name="New participant",email="new@example.test",password="test-only"))
+            db.session.commit()
+        plan = self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":True}).json["data"]
+        self.assertEqual([uid for group in plan["groups"] for uid in group["user_ids"]],[5])
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":False,"groups":plan["groups"]}).status_code,200)
+        with self.app.app_context():
+            state = QuestOnboarding.query.get(1)
+            state.phase,state.grandfathered = "finalized",True
+            for team in Teams.query.all():
+                if QuestTeamName.query.get(team.id) is None:
+                    db.session.add(QuestTeamName(team_id=team.id,name_locked=True))
+            db.session.commit()
+        self.action("start")
+        self.start(self.bob)
+        with self.app.app_context():
+            # Imported/native-admin history must not grant staff a prize.
+            db.session.add(Solves(challenge_id=1,user_id=2,team_id=self.team_id,date=now()))
+            db.session.commit()
+        ranked = self.guest.get(PREFIX+"/standings").json["data"]
+        self.assertEqual(next(t for t in ranked["teams"] if t["id"]==self.team_id)["total"],0)
+        with self.app.app_context():
+            self.assertEqual(Solves.query.count(),1)

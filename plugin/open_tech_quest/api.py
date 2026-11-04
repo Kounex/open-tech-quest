@@ -20,7 +20,8 @@ from .models import (QuestEvent, QuestRoom, QuestStep, QuestStart, QuestPause,
 from .service import (event, event_data, now, iso, parse_time, released,
                       room_data, room_steps, standings, Projection)
 
-from . import demo, onboarding, registration
+from . import demo, onboarding, registration, roles
+from .models import QuestMaintainer
 
 api = Blueprint("quest_api", __name__)
 
@@ -122,7 +123,7 @@ def admin(fn):
     def wrapper(*args, **kwargs):
         if not get_current_user():
             fail("Sign in as an administrator", 401)
-        if not is_admin():
+        if not is_admin() or get_current_user().banned:
             fail("Administrator access required", 403)
         return fn(*args, **kwargs)
     return wrapper
@@ -145,11 +146,14 @@ def room_by_slug(slug):
 def viewer():
     user = get_current_user()
     if not user:
-        return {"authenticated": False, "id": None, "name": None, "team_id": None, "team_name": None, "admin": False}
+        return {"authenticated": False, "id": None, "name": None, "team_id": None, "team_name": None, "admin": False,
+                "role": "guest", "can_manage_rooms": False, "can_manage_users": False}
     show = is_admin() or released()
     team = Teams.query.get(user.team_id) if user.team_id and show else None
     return {"authenticated": True, "id": user.id, "name": user.name,
-            "team_id": user.team_id if show else None, "team_name": team.name if team else None, "admin": is_admin()}
+            "team_id": user.team_id if show else None, "team_name": team.name if team else None, "admin": is_admin(),
+            "role": roles.role(user), "can_manage_rooms": roles.can_manage_rooms(user),
+            "can_manage_users": bool(is_admin() and not user.banned)}
 
 
 def current_rooms():
@@ -190,12 +194,14 @@ def room_view(slug):
 
 @api.route("/rooms/<slug>/start", methods=["POST"])
 def start_room(slug):
+    e = event(lock=True)
     user = get_current_user()
     if not user:
         fail("Sign in to start a room", 401)
+    if not onboarding.eligible(user):
+        fail("Only eligible participants can start rooms", 403)
     if not user.team_id:
         fail("An organizer must assign you to a team", 403)
-    e = event(lock=True)
     if e.status != "live" or not ctftime() or (e.end_at and now() >= e.end_at) or not released(e):
         fail("Rooms can start only while the event is live and rosters are released", 409)
     room = room_by_slug(slug)
@@ -247,7 +253,7 @@ def admin_state():
                     "participants": [{"id": u.id, "name": u.name, "email": u.email, "team_id": u.team_id,
                                       "ready_at": iso(readiness[u.id].ready_at) if u.id in readiness else None,
                                       "late": bool(u.id in readiness and readiness[u.id].late),
-                                      "banned": bool(u.banned)} for u in Users.query.filter_by(type="user").order_by(Users.id).all()],
+                                      "banned": bool(u.banned)} for u in Users.query.filter_by(type="user").order_by(Users.id).all() if not roles.is_maintainer(u)],
                     "audit": [{"id": a.id, "actor_id": a.actor_id, "action": a.action, "detail": a.detail, "created_at": iso(a.created_at)} for a in QuestAudit.query.order_by(QuestAudit.id.desc()).limit(200).all()],
                     "standings": standings(), "projector": event().projector, "demo": demo.status(event()), "onboarding": onboarding.summary(event()), "registration": registration.status()})
 
@@ -364,10 +370,30 @@ def asset_url(value):
     return value
 
 
+def room_theme(value, existing=None):
+    if not isinstance(value, dict) or set(value) - {"accent", "logo_url", "hero_url", "layout"}:
+        fail("Invalid room theme")
+    result = dict(existing or {"layout": "generic", "accent": "#00a6b2", "logo_url": None, "hero_url": None})
+    for key, item in value.items():
+        if key.endswith("_url"):
+            result[key] = asset_url(item)
+        elif key == "accent":
+            if not isinstance(item, str) or re.fullmatch(r"#[0-9a-fA-F]{6}", item) is None:
+                fail("Accent must be a six-digit hex color")
+            result[key] = item
+        else:
+            if item not in ("openshift", "ansible", "rhel", "security", "ai", "generic"):
+                fail("Unknown room layout")
+            result[key] = item
+    return result
+
+
 @api.route("/admin/rooms/<slug>", methods=["PATCH"])
-@admin
+@roles.room_manager
 def configure_room(slug):
     data, e = body(), event(lock=True)
+    if not roles.can_manage_rooms():
+        fail("Room management access required", 403)
     room = room_by_slug(slug)
     if set(data) - {"name", "subtitle", "description", "theme", "challenge_ids", "position"}:
         fail("Unknown room setting")
@@ -378,24 +404,8 @@ def configure_room(slug):
         draft(e)
         room.position = integer(data["position"], "Position", 0, 100)
     if "theme" in data:
-        theme = data["theme"]
-        if not isinstance(theme, dict) or set(theme) - {"accent", "logo_url", "hero_url", "layout"}:
-            fail("Invalid room theme")
-        result = dict(room.theme)
-        for key, value in theme.items():
-            if key.endswith("_url"):
-                result[key] = asset_url(value)
-            elif key == "accent":
-                if not isinstance(value, str) or re.fullmatch(r"#[0-9a-fA-F]{6}", value) is None:
-                    fail("Accent must be a six-digit hex color")
-                result[key] = value
-            else:
-                if value not in ("openshift", "ansible", "rhel", "security", "ai"):
-                    fail("Unknown room layout")
-                result[key] = value
-        room.theme = result
+        room.theme = room_theme(data["theme"], room.theme)
     if "challenge_ids" in data:
-        draft(e)
         ids = data["challenge_ids"]
         if not isinstance(ids, list) or any(type(x) is not int or x < 1 for x in ids) or len(ids) != len(set(ids)):
             fail("challenge_ids must be a list of unique challenge IDs")
@@ -404,19 +414,10 @@ def configure_room(slug):
             fail("One or more challenges do not exist")
         if QuestStep.query.filter(QuestStep.room_id != room.id, QuestStep.challenge_id.in_(ids)).first():
             fail("A challenge belongs to another room", 409)
-        previous = room_steps(room)
-        for step in previous:
-            challenge = Challenges.query.get(step.challenge_id)
-            if challenge:
-                challenge.requirements, challenge.next_id = None, None
-            db.session.delete(step)
-        db.session.flush()
-        for position, challenge_id in enumerate(ids):
-            challenge = challenges[challenge_id]
-            challenge.requirements = {"prerequisites": ids[:position], "anonymize": False}
-            challenge.next_id = ids[position + 1] if position + 1 < len(ids) else None
-            challenge.position = position
-            db.session.add(QuestStep(room_id=room.id, challenge_id=challenge_id, position=position))
+        if ids != [step.challenge_id for step in room_steps(room)]:
+            draft(e)
+            from .room_topology import set_challenge_order
+            set_challenge_order(room, ids)
     audit("room.configure", {"room_slug": slug, "changes": data})
     db.session.commit()
     clear_challenges()
@@ -424,7 +425,7 @@ def configure_room(slug):
 
 
 def eligible_users():
-    return Users.query.filter_by(type="user", banned=False, team_id=None).order_by(Users.id).all()
+    return [u for u in Users.query.filter_by(type="user", banned=False, team_id=None).order_by(Users.id).all() if onboarding.eligible(u)]
 
 
 def unique_name(name, excluding=None):
@@ -830,3 +831,128 @@ def configure_attendance():
     onboarding.change_attendance(e, enabled, "organizer")
     db.session.commit()
     return success(onboarding.attendance(e))
+
+
+@api.route("/manage/rooms")
+@roles.room_manager
+def manage_rooms():
+    mapped = {s.challenge_id: s.room_id for s in QuestStep.query.all()}
+    room_slugs = {r.id: r.slug for r in QuestRoom.query.all()}
+    projection = Projection()
+    from .room_topology import topology_reason
+    rooms = []
+    for room in projection.rooms:
+        payload = projection.room(room, None, True)
+        blocked = topology_reason(room, projection.event)
+        payload.update(can_configure_topology=blocked is None, topology_reason=blocked,
+                       can_delete=blocked is None, delete_reason=blocked)
+        rooms.append(payload)
+    return success({"event": event_data(projection.event),
+                    "rooms": rooms,
+                    "available_challenges": [{"id": c.id, "name": c.name, "state": c.state,
+                                               "room_slug": room_slugs.get(mapped.get(c.id))}
+                                              for c in Challenges.query.order_by(Challenges.id).all()]})
+
+
+@api.route("/manage/rooms", methods=["POST"])
+@roles.room_manager
+def create_room():
+    data, e = body(), event(lock=True)
+    if not roles.can_manage_rooms():
+        fail("Room management access required", 403)
+    draft(e)
+    if set(data) - {"slug", "name", "subtitle", "description", "theme"}:
+        fail("Unknown room setting")
+    slug = data.get("slug")
+    if not isinstance(slug, str) or re.fullmatch(r"[a-z0-9-]{1,32}", slug) is None:
+        fail("Room slug must contain 1 to 32 lowercase letters, digits or hyphens")
+    if QuestRoom.query.filter_by(slug=slug).first():
+        fail("A room already uses this slug", 409)
+    room = QuestRoom(slug=slug, name=text(data.get("name"), "Room name", 80),
+                     subtitle=text(data.get("subtitle", ""), "Subtitle", 160, empty=True),
+                     description=text(data.get("description", ""), "Description", 10000, empty=True),
+                     theme=room_theme(data.get("theme", {})),
+                     position=max((r.position for r in QuestRoom.query.all()), default=-1)+1)
+    db.session.add(room)
+    audit("room.create", {"room_slug": slug})
+    db.session.commit()
+    return success(room_data(room, admin=True))
+
+
+@api.route("/manage/rooms/<slug>", methods=["DELETE"])
+@roles.room_manager
+def delete_room(slug):
+    data, e = body(), event(lock=True)
+    if not roles.can_manage_rooms():
+        fail("Room management access required", 403)
+    draft(e)
+    if set(data) != {"confirm"} or data["confirm"] is not True:
+        fail("Confirm room removal with confirm: true")
+    room = room_by_slug(slug)
+    from .room_topology import set_challenge_order
+    set_challenge_order(room, [])
+    if (e.projector or {}).get("room_slug") == slug:
+        e.projector = {"view": "overview", "room_slug": None}
+    db.session.delete(room)
+    audit("room.delete", {"room_slug": slug})
+    db.session.commit()
+    clear_challenges()
+    return success({"slug": slug, "deleted": True})
+
+
+def managed_user(user, e):
+    blocked = roles.promotion_reason(user, e)
+    team = Teams.query.get(user.team_id) if user.team_id else None
+    ready = QuestReadiness.query.get(user.id)
+    return {"id": user.id, "name": user.name, "email": user.email, "role": roles.role(user),
+            "banned": bool(user.banned), "team_id": user.team_id, "team_name": team.name if team else None,
+            "ready_at": iso(ready.ready_at) if ready else None,
+            "can_change_role": blocked is None, "role_change_reason": blocked}
+
+
+@api.route("/admin/users")
+@admin
+def managed_users():
+    e = event()
+    return success({"users": [managed_user(user, e) for user in Users.query.order_by(Users.id).all()]})
+
+
+@api.route("/admin/users/<int:user_id>/role", methods=["PATCH"])
+@admin
+def change_user_role(user_id):
+    data, e = body(), event(lock=True)
+    if set(data) != {"role", "confirm"} or data["confirm"] is not True or data["role"] not in ("participant", "maintainer"):
+        fail("Supply role participant or maintainer and confirm: true")
+    user = Users.query.get(user_id)
+    if user is None:
+        fail("User not found", 404)
+    if user.type != "user":
+        fail("Native administrators are managed through CTFd", 409)
+    previous = roles.role(user)
+    if previous == data["role"]:
+        db.session.commit()
+        return success(managed_user(user, e))
+    old_team = Teams.query.get(user.team_id) if user.team_id else None
+    if data["role"] == "maintainer":
+        blocked = roles.promotion_reason(user, e)
+        if blocked:
+            fail(blocked, 409)
+        db.session.add(QuestMaintainer(user_id=user.id, previous_hidden=bool(user.hidden)))
+        user.hidden = True
+    else:
+        grant = QuestMaintainer.query.filter_by(user_id=user.id).one()
+        user.hidden = grant.previous_hidden
+        db.session.delete(grant)
+    user.team_id = None
+    if old_team and old_team.captain_id == user.id:
+        old_team.captain_id = min((member.id for member in old_team.members if member.id != user.id), default=None)
+    ready = QuestReadiness.query.get(user.id)
+    if ready:
+        db.session.delete(ready)
+    audit("user.role", {"user_id": user.id, "old": previous, "new": data["role"], "detached_team_id": old_team.id if old_team else None})
+    db.session.commit()
+    clear_user_session(user.id)
+    if old_team:
+        clear_team_session(old_team.id)
+    clear_standings()
+    return success(managed_user(user, e))
