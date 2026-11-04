@@ -6,6 +6,13 @@ see only Rooms in Organize and can configure all five rooms and author their
 standard flag challenges there. Teams remains the attendance/roster workspace.
 CTFd retains accounts, password handling, challenges, flags and grading.
 
+Additional approved scope: the five topic rooms stay installation defaults.
+Room managers may rename display titles, add custom rooms and remove unused
+rooms. Slugs remain stable identifiers; a rename does not break links/history.
+Custom rooms default to a neutral `generic` layout with optional branded assets.
+Room navigation, standings and projector derive their room count from data.
+An intentionally empty room set remains empty across restarts.
+
 ## Authorization and staff lifecycle
 
 Keep native user types unchanged. Add a plugin-owned, user-FK-cascading maintainer
@@ -56,6 +63,13 @@ Existing `/api/v1/quest` envelope and session/CSRF rules apply.
 - Existing PATCH `/admin/rooms/<slug>` admits room managers only; all other
   `/admin/*` routes retain native-admin authorization. Existing field validation
   and draft topology restrictions remain. Room writes are audited.
+- POST `/manage/rooms`: `{slug,name,subtitle?,description?,theme?}`, draft only.
+  Unique slug is 1–32 lowercase letters/digits/hyphens; position appends. Default
+  theme is `{layout:generic,accent:#00a6b2,logo_url:null,hero_url:null}`.
+- DELETE `/manage/rooms/<slug>`: `{confirm:true}`, draft only. Refuse starts,
+  challenge activity or referenced history. Unmap its ordered chain and preserve
+  native challenges, flags, hints and files; never cascade-delete event history.
+  Removing all rooms is allowed; the UI provides Add room in the empty state.
 
 ### Challenge editor
 
