@@ -59,7 +59,9 @@ Existing `/api/v1/quest` envelope and session/CSRF rules apply.
   can_change_role,role_change_reason}`. Blocked actions explain why.
 - GET `/manage/rooms` (admin/maintainer): `{event,rooms,available_challenges}`.
   Shape matches those fields of existing admin state, with admin room metadata.
-  No participant, team, email, audit or flags in this overview.
+  No participant, team, email, audit or flags in this overview. Rooms include
+  `can_configure_topology`, `topology_reason`, `can_delete`, `delete_reason`
+  for actionable lifecycle/demo/history restrictions.
 - Existing PATCH `/admin/rooms/<slug>` admits room managers only; all other
   `/admin/*` routes retain native-admin authorization. Existing field validation
   and draft topology restrictions remain. Room writes are audited.
@@ -95,6 +97,8 @@ matching is default, with an explicit per-flag case-insensitive option. Validate
 input strictly and bound names/descriptions/flag sizes; never echo secrets in
 errors, logs, audits, Git or bootstrap. Challenge reads and flag previews require
 room management permission; require actual room membership for every ID.
+Authoring responses use `Cache-Control: private, no-store`. Flag content cannot
+have edge whitespace because native attempts trim submitted answers.
 
 Create/update/delete only in Draft. Refuse modifying challenges with activity;
 never erase solves/fails/history. Lock mutations of demo content while an active
@@ -126,3 +130,33 @@ everywhere, fresh/upgrade SQLite/MariaDB, stale role/readiness/optimization,
 grant/revoke in held sessions, CRUD/flags/native participant solving, lifecycle
 and activity locks, room isolation, no logged flag values, and actual admin/
 maintainer/participant browser journeys before CI publication and GitOps rollout.
+
+## Isolated acceptance
+
+Verified a real 0.1.11 upgrade with two self-registered accounts, a provisional
+team and an attendance confirmation. The upgrade preserved all records and
+created no staff grants. Promotion in Users detached the ready provisional member,
+cleared readiness, hid the native public account and changed the held SPA to its
+staff workspace. Maintainer requests for private admin state/users and personal
+onboarding were rejected. A participant could not read the flag workspace.
+
+Browser checks created a sixth custom room, renamed its display title with the
+slug intact, authored Markdown challenges with masked static answers, verified
+case-sensitive and case-insensitive previews, and reordered the native chain.
+Removal retained native content, and deleting all rooms survived an application
+restart with no default rooms recreated. The empty workspace could create a first
+custom room and remap both retained challenges. After role revocation, a write
+from the held editor returned 403. Regranting did not resurrect old attendance.
+
+A normal participant then completed attendance, roster optimization, naming and
+finalization without the maintainer in its pool. After isolated event start, the
+second authored challenge stayed locked until the first native solve; both solved
+through the normal participant UI and contributed only to the participant team's
+awards. No production accounts, grants, event starts or content changes were used.
+
+Users and editor WCAG A/AA scans reported zero violations and no incomplete checks.
+Both layouts fit a 390px mobile viewport without document-wide horizontal overflow.
+Independent review found a queued role-change race after native actor demotion;
+the route now rechecks persisted admin/banned status after the shared event lock.
+Real native demotion and banning regressions passed on both databases and were
+independently rechecked; no findings remain.
