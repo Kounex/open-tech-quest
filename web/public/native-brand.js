@@ -84,6 +84,21 @@
       if (stopped || pending || document.hidden) return;
       pending = true;
       try {
+        const identity = await fetch("/api/v1/quest/bootstrap", {
+          credentials: "same-origin",
+          headers: { Accept: "application/json", "X-Quest-Attendance-UI": "1" },
+        });
+        if (identity.status === 401 || identity.status === 403) {
+          stop();
+          return;
+        }
+        if (!identity.ok) return;
+        const bootstrap = await identity.json();
+        if (!bootstrap.success) return;
+        if (bootstrap.data?.viewer?.role !== "participant") {
+          stop();
+          return;
+        }
         const response = await fetch("/api/v1/quest/onboarding", {
           credentials: "same-origin",
           headers: { Accept: "application/json", "X-Quest-Attendance-UI": "1" },

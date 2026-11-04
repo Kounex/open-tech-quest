@@ -7,6 +7,7 @@ import { Link, Notice } from "./ui";
 import { Lobby, RoomPage } from "./participant";
 import { StandingsPage, Stage } from "./standings";
 import { Admin } from "./admin";
+import { StaffHome } from "./staff-home";
 import { ParticipantSession } from "./participant-session";
 import "./style.css";
 const branding = "/plugins/open_tech_quest/assets/branding";
@@ -28,6 +29,8 @@ function App() {
       csrfNonce: data.csrfNonce ?? undefined,
     };
   }, [data]);
+  const staff =
+    data?.viewer.role === "maintainer" || data?.viewer.role === "administrator";
   const stage = path.replace(/\/$/, "") === "/quest/stage";
   return (
     <ParticipantSession viewer={data?.viewer} onChanged={bootstrap.refresh}>
@@ -61,7 +64,7 @@ function App() {
                       : ""
                   }
                 >
-                  The rooms
+                  {staff ? "Quest home" : "The rooms"}
                 </Link>
                 <Link
                   href="/quest/standings"
@@ -69,7 +72,7 @@ function App() {
                 >
                   Standings
                 </Link>
-                {data?.viewer.admin && (
+                {data?.viewer.can_manage_rooms && (
                   <Link
                     href="/quest/admin"
                     className={path.includes("admin") ? "active" : ""}
@@ -116,20 +119,31 @@ function App() {
                   </Notice>
                 )}
                 {path === "/quest" || path === "/quest/" ? (
-                  <Lobby data={data} />
+                  staff ? (
+                    <StaffHome data={data} />
+                  ) : (
+                    <Lobby data={data} />
+                  )
                 ) : path.startsWith("/quest/rooms/") ? (
-                  <RoomPage
-                    slug={decode(
-                      path.slice("/quest/rooms/".length).replace(/\/$/, ""),
-                    )}
-                    data={data}
-                    onRefresh={bootstrap.refresh}
-                  />
+                  data.viewer.role === "maintainer" ? (
+                    <StaffHome data={data} />
+                  ) : (
+                    <RoomPage
+                      slug={decode(
+                        path.slice("/quest/rooms/".length).replace(/\/$/, ""),
+                      )}
+                      data={data}
+                      onRefresh={bootstrap.refresh}
+                    />
+                  )
                 ) : path === "/quest/standings" ? (
                   <StandingsPage />
                 ) : path === "/quest/admin" ? (
-                  data.viewer.admin ? (
-                    <Admin />
+                  data.viewer.can_manage_rooms ? (
+                    <Admin
+                      key={`${data.viewer.id}-${data.viewer.role}`}
+                      viewer={data.viewer}
+                    />
                   ) : (
                     <Notice tone="error">
                       Organizer access is required.{" "}
@@ -149,7 +163,9 @@ function App() {
             <img src={`${branding}/redhat-on-light.svg`} alt="Red Hat" />
             <span>Open Tech Quest · Learn together. Solve together.</span>
             <a href="/settings">Account settings</a>
-            {data?.viewer.team_id && <a href="/team">Your team</a>}
+            {data?.viewer.role === "participant" && data.viewer.team_id && (
+              <a href="/team">Your team</a>
+            )}
           </footer>
         </>
       )}

@@ -5,7 +5,7 @@ import type { Viewer } from "./types";
 import { Check, Confirm, Notice } from "./ui";
 
 export function ParticipantOnboarding({ viewer }: { viewer: Viewer }) {
-  if (!viewer.authenticated || viewer.admin) return null;
+  if (!viewer.authenticated || viewer.role !== "participant") return null;
   return <PersonalOnboarding key={viewer.id} viewer={viewer} />;
 }
 function PersonalOnboarding({ viewer }: { viewer: Viewer }) {

@@ -11,7 +11,11 @@ export interface QuestEvent {
   server_now: string;
   results_published: boolean;
 }
+export type UserRole = "guest" | "participant" | "maintainer" | "administrator";
 export interface Viewer {
+  role: UserRole;
+  can_manage_rooms: boolean;
+  can_manage_users: boolean;
   authenticated: boolean;
   id: number | null;
   name: string | null;
@@ -35,6 +39,10 @@ export interface Progress {
   status: "not_started" | "active" | "complete";
 }
 export interface Room {
+  can_delete?: boolean;
+  delete_reason?: string | null;
+  can_configure_topology?: boolean;
+  topology_reason?: string | null;
   id: number;
   slug: string;
   name: string;
@@ -196,4 +204,43 @@ export interface AttendancePlan {
   moves: { user_id: number; from_team_id: number | null; to_group: number }[];
   unassigned_user_ids: number[];
   warnings: string[];
+}
+
+export interface ManagedUser {
+  id: number;
+  name: string;
+  email: string;
+  role: Exclude<UserRole, "guest">;
+  banned: boolean;
+  team_id: number | null;
+  team_name: string | null;
+  ready_at: string | null;
+  can_change_role: boolean;
+  role_change_reason: string | null;
+}
+export interface ManagedRooms {
+  event: QuestEvent;
+  rooms: Room[];
+  available_challenges: AdminState["available_challenges"];
+}
+export interface EditableFlag {
+  content: string;
+  case_insensitive: boolean;
+}
+export interface EditableChallenge {
+  id: number;
+  name: string;
+  description: string;
+  state: "hidden" | "visible";
+  type: string;
+  flags: EditableFlag[];
+  can_edit: boolean;
+  edit_reason: string | null;
+  can_delete: boolean;
+  delete_reason: string | null;
+}
+export interface ChallengeWorkspace {
+  challenges: EditableChallenge[];
+  can_create: boolean;
+  create_reason: string | null;
 }

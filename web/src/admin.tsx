@@ -5,6 +5,9 @@ import { DemoControls } from "./demo";
 import { Attendance } from "./attendance";
 import { RegistrationControls } from "./registration";
 import { AttendanceWindowControls } from "./attendance-window";
+import { RoomManagement } from "./room-management";
+import { Users } from "./users";
+import type { Viewer } from "./types";
 import type {
   AdminState,
   AttendanceState,
@@ -12,13 +15,13 @@ import type {
   Projector,
   QuestEvent,
   RegistrationState,
-  Room,
 } from "./types";
 import { Arrow, Confirm, Empty, Markdown, Notice } from "./ui";
 const tabs = [
   "Event",
   "Rooms",
   "Teams",
+  "Users",
   "Awards",
   "Projector",
   "Audit",
@@ -36,7 +39,28 @@ function localDate(value: string | null) {
 function utcDate(value: string) {
   return value ? new Date(value).toISOString() : null;
 }
-export function Admin() {
+export function Admin({ viewer }: { viewer: Viewer }) {
+  if (!viewer.admin)
+    return (
+      <>
+        <div className="page-heading">
+          <div>
+            <p className="eyebrow">Challenge maintainer</p>
+            <h1>Prepare the rooms</h1>
+            <p className="lede">
+              Configure room presentation, challenge paths and accepted answers.
+            </p>
+          </div>
+        </div>
+        <nav className="room-tabs" aria-label="Organizer sections">
+          <span className="active maintainer-room-tab">Rooms</span>
+        </nav>
+        <RoomManagement viewer={viewer} />
+      </>
+    );
+  return <FullAdmin viewer={viewer} />;
+}
+function FullAdmin({ viewer }: { viewer: Viewer }) {
   const resource = useResource<AdminState>("/admin/state", 20000),
     [tab, setTab] = useState<(typeof tabs)[number]>("Event"),
     [message, setMessage] = useState(""),
@@ -92,19 +116,21 @@ export function Admin() {
         </a>
       </div>
       <nav className="room-tabs" aria-label="Organizer sections">
-        {tabs.map((t) => (
-          <button
-            key={t}
-            onClick={() => {
-              setTab(t);
-              setMessage("");
-              setError("");
-            }}
-            className={tab === t ? "active" : ""}
-          >
-            {t}
-          </button>
-        ))}
+        {tabs
+          .filter((t) => t !== "Users" || viewer.can_manage_users)
+          .map((t) => (
+            <button
+              key={t}
+              onClick={() => {
+                setTab(t);
+                setMessage("");
+                setError("");
+              }}
+              className={tab === t ? "active" : ""}
+            >
+              {t}
+            </button>
+          ))}
       </nav>
       {resource.error && (
         <Notice tone="error" retry={() => void resource.refresh()}>
@@ -125,9 +151,11 @@ export function Admin() {
             execute={execute}
           />
         ) : tab === "Rooms" ? (
-          <RoomsControls data={data} busy={busy} execute={execute} />
+          <RoomManagement viewer={viewer} />
         ) : tab === "Teams" ? (
           <Attendance data={data} busy={busy} mutate={mutate} />
+        ) : tab === "Users" ? (
+          <Users onChanged={resource.refresh} />
         ) : tab === "Awards" ? (
           <AwardControls data={data} busy={busy} execute={execute} />
         ) : tab === "Projector" ? (
@@ -341,7 +369,7 @@ function EventControls({
             "POST",
             { action },
             action === "load"
-              ? "Demo content loaded across all five rooms"
+              ? "Demo room content loaded"
               : "Demo content removed",
           )
         }
@@ -438,288 +466,6 @@ function EventControls({
         </form>
       </section>
     </>
-  );
-}
-function RoomsControls({
-  data,
-  busy,
-  execute,
-}: {
-  data: AdminState;
-  busy: boolean;
-  execute: Execute;
-}) {
-  const [slug, setSlug] = useState(data.rooms[0]?.slug || "");
-  const room = data.rooms.find((r) => r.slug === slug);
-  return (
-    <>
-      <div className="section-heading">
-        <div>
-          <h2>Room presentation and challenge order</h2>
-          <p>
-            Challenge descriptions, flags, files and hints stay in native CTFd.
-          </p>
-        </div>
-        <a href="/admin/challenges" className="button secondary">
-          Author challenges <Arrow />
-        </a>
-      </div>
-      <div className="admin-room-layout">
-        <nav className="admin-room-nav" aria-label="Edit room">
-          {data.rooms.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => setSlug(r.slug)}
-              className={slug === r.slug ? "active" : ""}
-            >
-              {r.name}
-              <span>{r.steps.length} challenges</span>
-            </button>
-          ))}
-        </nav>
-        {room && (
-          <RoomForm
-            key={room.id}
-            room={room}
-            data={data}
-            busy={busy}
-            execute={execute}
-          />
-        )}
-      </div>
-    </>
-  );
-}
-function RoomForm({
-  room,
-  data,
-  busy,
-  execute,
-}: {
-  room: Room;
-  data: AdminState;
-  busy: boolean;
-  execute: Execute;
-}) {
-  const [ids, setIds] = useState(room.steps.map((s) => s.id));
-  const [selected, setSelected] = useState("");
-  const [introduction, setIntroduction] = useState(room.description);
-  const draft = data.event.status === "draft";
-  function move(index: number, delta: number) {
-    setIds((current) => {
-      const next = [...current];
-      [next[index], next[index + delta]] = [next[index + delta], next[index]];
-      return next;
-    });
-  }
-  return (
-    <section className="admin-panel">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const form = new FormData(e.currentTarget);
-          execute(
-            `/admin/rooms/${room.slug}`,
-            "PATCH",
-            {
-              name: text(form, "name"),
-              subtitle: text(form, "subtitle"),
-              description: text(form, "description"),
-              theme: {
-                accent: text(form, "accent"),
-                logo_url: text(form, "logo_url"),
-                hero_url: text(form, "hero_url"),
-                layout: text(form, "layout"),
-              },
-              ...(draft ? { challenge_ids: ids } : {}),
-            },
-            `${room.name} saved`,
-          );
-        }}
-      >
-        <div className="form-grid">
-          <label className="field">
-            <span>Room name</span>
-            <input name="name" required defaultValue={room.name} />
-          </label>
-          <label className="field">
-            <span>Subtitle</span>
-            <input name="subtitle" defaultValue={room.subtitle} />
-          </label>
-        </div>
-        <label className="field">
-          <span>Room introduction (Markdown)</span>
-          <textarea
-            name="description"
-            rows={8}
-            maxLength={10000}
-            value={introduction}
-            onChange={(e) => setIntroduction(e.target.value)}
-            aria-describedby={`introduction-help-${room.id}`}
-          />
-          <small id={`introduction-help-${room.id}`}>
-            Use ## headings, **bold**, *italic*, lists, [links](https://…), and
-            `inline code`. The subtitle stays plain text on the room card.
-          </small>
-        </label>
-        <details className="introduction-preview">
-          <summary>Preview introduction</summary>
-          <div className="room-description">
-            {introduction.trim() ? (
-              <Markdown source={introduction} />
-            ) : (
-              <p className="meta">Write an introduction to preview it here.</p>
-            )}
-          </div>
-        </details>
-        <details className="asset-fields">
-          <summary>Theme and artwork</summary>
-          <div className="form-grid">
-            <label className="field">
-              <span>Logo URL</span>
-              <input
-                name="logo_url"
-                defaultValue={room.theme.logo_url || ""}
-                placeholder="/plugins/open_tech_quest/assets/…"
-              />
-            </label>
-            <label className="field">
-              <span>Hero image URL</span>
-              <input
-                name="hero_url"
-                defaultValue={room.theme.hero_url || ""}
-                placeholder="/plugins/open_tech_quest/assets/…"
-              />
-              <small>
-                Leave blank to use this theme’s bundled room illustration.
-              </small>
-            </label>
-            <label className="field">
-              <span>Theme layout</span>
-              <select
-                name="layout"
-                defaultValue={room.theme.layout || room.slug}
-              >
-                {["openshift", "ansible", "rhel", "security", "ai"].map(
-                  (layout) => (
-                    <option key={layout} value={layout}>
-                      {layout}
-                    </option>
-                  ),
-                )}
-              </select>
-            </label>
-            <label className="field">
-              <span>Accent color</span>
-              <input
-                name="accent"
-                pattern="#[0-9a-fA-F]{6}"
-                defaultValue={room.theme.accent || "#00a5b5"}
-              />
-            </label>
-          </div>
-          <p className="meta">
-            Use approved local URLs under /plugins/open_tech_quest/assets/. The
-            composed room visual works without an image.
-          </p>
-        </details>
-        <div className="section-heading">
-          <h3>Ordered challenge path</h3>
-          <span className="meta">
-            {draft ? "Editable in draft" : "Locked after event start"}
-          </span>
-        </div>
-        {!ids.length && (
-          <p className="meta">
-            No challenges mapped yet. Author a native challenge, then add it
-            here.
-          </p>
-        )}
-        <ol className="challenge-order">
-          {ids.map((id, index) => (
-            <li key={id}>
-              <span className="order-number">{index + 1}</span>
-              <span>
-                {data.available_challenges.find((c) => c.id === id)?.name ||
-                  room.steps.find((s) => s.id === id)?.title ||
-                  `Challenge ${id}`}
-              </span>
-              {draft && (
-                <div className="order-actions">
-                  <button
-                    type="button"
-                    aria-label={`Move challenge ${index + 1} up`}
-                    disabled={index === 0 || busy}
-                    onClick={() => move(index, -1)}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Move challenge ${index + 1} down`}
-                    disabled={index === ids.length - 1 || busy}
-                    onClick={() => move(index, 1)}
-                  >
-                    ↓
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIds(ids.filter((x) => x !== id))}
-                    disabled={busy}
-                  >
-                    Remove
-                  </button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ol>
-        {draft && (
-          <div className="add-challenge">
-            <label className="sr-only" htmlFor={`add-${room.id}`}>
-              Challenge to add
-            </label>
-            <select
-              id={`add-${room.id}`}
-              value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-              disabled={busy}
-            >
-              <option value="">Choose a challenge</option>
-              {data.available_challenges
-                .filter(
-                  (c) =>
-                    !ids.includes(c.id) &&
-                    (!c.room_slug || c.room_slug === room.slug),
-                )
-                .map((c) => (
-                  <option value={c.id} key={c.id}>
-                    {c.name} · {c.state}
-                  </option>
-                ))}
-            </select>
-            <button
-              type="button"
-              className="button secondary"
-              disabled={!selected || busy}
-              onClick={() => {
-                setIds([...ids, Number(selected)]);
-                setSelected("");
-              }}
-            >
-              Add step
-            </button>
-          </div>
-        )}
-        <p className="meta">
-          Saving updates native challenge requirements to match this sequence.
-          Each challenge belongs to one room.
-        </p>
-        <button className="button" disabled={busy}>
-          Save room
-        </button>
-      </form>
-    </section>
   );
 }
 function AwardControls({

@@ -70,15 +70,18 @@ export function RoomArt({
         />
       ) : (
         <div className="custom-art">
-          <span>{room.name}</span>
-          <p>{room.subtitle || "A new path for your team"}</p>
+          <img
+            src="/plugins/open_tech_quest/assets/branding/quest-code.png"
+            alt=""
+            className="generic-room-art"
+          />
         </div>
       )}
     </div>
   );
 }
 export function RoomLogo({ room }: { room: Room }) {
-  const key = room.slug.toLowerCase();
+  const key = (room.theme?.layout || "generic").toLowerCase();
   const defaults: Record<string, string> = {
     openshift: "openshift.png",
     ansible: "ansible.png",

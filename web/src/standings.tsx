@@ -26,7 +26,7 @@ export function StandingsPage() {
           <p className="lede">
             {data.event.results_published
               ? "Final results, published by the organizers."
-              : "Shared progress across all five rooms. Results update automatically."}
+              : "Shared progress across the configured rooms. Results update automatically."}
           </p>
         </div>
         <Link className="button secondary" href="/quest/stage">
@@ -103,7 +103,17 @@ function StandingTable({
   overall?: boolean;
 }) {
   return (
-    <table className={`standing-table${stage ? " stage-table" : ""}`}>
+    <table
+      className={`standing-table${stage ? " stage-table" : ""}`}
+      style={
+        !room && !overall
+          ? {
+              minWidth:
+                (stage ? 360 : 400) + data.rooms.length * (stage ? 80 : 100),
+            }
+          : undefined
+      }
+    >
       <thead>
         <tr>
           <th scope="col" className="rank-col">
@@ -113,7 +123,7 @@ function StandingTable({
           {!room &&
             !overall &&
             data.rooms.map((r) => (
-              <th key={r.id} scope="col" className="room-col">
+              <th key={r.id} scope="col" className="room-col" title={r.name}>
                 {r.name}
               </th>
             ))}

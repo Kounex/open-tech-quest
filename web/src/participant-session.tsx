@@ -36,7 +36,7 @@ export function ParticipantSession({
   onChanged: () => Promise<void>;
   children: ReactNode;
 }) {
-  if (!viewer?.authenticated || viewer.admin || !viewer.id)
+  if (!viewer?.authenticated || viewer.role !== "participant" || !viewer.id)
     return (
       <ParticipantContext.Provider value={null}>
         {children}

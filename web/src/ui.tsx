@@ -158,6 +158,7 @@ export function Confirm({
   return (
     <>
       <button
+        type="button"
         className={danger ? "button danger" : "button secondary"}
         disabled={disabled}
         onClick={() => setOpen(true)}
@@ -211,6 +212,7 @@ function ConfirmDialog({
       {error && <Notice tone="error">{error}</Notice>}
       <div className="actions">
         <button
+          type="button"
           className="button secondary"
           autoFocus
           disabled={busy}
@@ -219,6 +221,7 @@ function ConfirmDialog({
           Cancel
         </button>
         <button
+          type="button"
           className="button"
           disabled={busy}
           onClick={async () => {

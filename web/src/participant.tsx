@@ -50,7 +50,7 @@ export function EventNotice({ data }: { data: Bootstrap }) {
             </>
           )}
         </Notice>
-      ) : !viewer.team_id && !viewer.admin ? (
+      ) : !viewer.team_id && viewer.role === "participant" ? (
         <Notice>
           <Link href="/quest#your-team">
             Check in and see your team in the quest lobby
@@ -73,7 +73,13 @@ export function Lobby({ data }: { data: Bootstrap }) {
         <div>
           <p className="eyebrow">Red Hat Hands-On Day · Darmstadt</p>
           <h1>
-            Five rooms.
+            {data.rooms.length === 5
+              ? "Five rooms."
+              : data.rooms.length === 1
+                ? "One room."
+                : data.rooms.length === 0
+                  ? "A quest in the making."
+                  : `${data.rooms.length} rooms.`}
             <br />
             One team quest.
           </h1>
@@ -111,7 +117,15 @@ export function Lobby({ data }: { data: Bootstrap }) {
           Each room has its own ordered challenge path
         </span>
       </div>
-      <div className="room-grid">
+      {!data.rooms.length && (
+        <div className="empty">
+          <h2>The rooms are being prepared</h2>
+          <p>
+            The organizers will add the room paths here before the quest begins.
+          </p>
+        </div>
+      )}
+      <div className={`room-grid room-count-${data.rooms.length}`}>
         {data.rooms.map((room) => (
           <Link
             key={room.id}
@@ -226,7 +240,7 @@ export function RoomPage({
   const preview = data.viewer.admin;
   const started = !!room.progress.started_at || preview;
   const canStart =
-    data.viewer.authenticated &&
+    data.viewer.role === "participant" &&
     !!data.viewer.team_id &&
     data.event.status === "live" &&
     room.progress.total > 0;

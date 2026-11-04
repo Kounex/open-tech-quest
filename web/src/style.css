@@ -454,8 +454,8 @@ svg {
 .room-card:hover {
   border-color: #777782;
 }
-.room-card:nth-child(4),
-.room-card:nth-child(5) {
+.room-count-5 .room-card:nth-child(4),
+.room-count-5 .room-card:nth-child(5) {
   grid-column: span 3;
 }
 .room-card .room-art {
@@ -1080,7 +1080,7 @@ textarea {
 }
 .stage-columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 32px;
   flex: 1;
   align-items: start;
@@ -1195,7 +1195,7 @@ textarea {
 }
 .room-awards {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 20px;
 }
 .room-awards > section {
@@ -2970,5 +2970,380 @@ body:has(.participant-attendance-bar) {
 @media (max-width: 760px) {
   body:has(.participant-attendance-bar) {
     padding-bottom: 132px;
+  }
+}
+
+/* Room managers share one workspace; private answers appear only in the open editor. */
+.maintainer-room-tab {
+  padding: 16px 0 20px;
+  border-bottom: 2px solid #c00;
+  font-size: 15px;
+  color: #a40000;
+}
+.staff-role-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 40px;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--cyan);
+  background: #fff;
+}
+.staff-role-card h2 {
+  font-size: 28px;
+}
+.staff-role-card p {
+  font-size: 16px;
+  color: var(--muted);
+  max-width: 760px;
+  margin: 0;
+}
+.staff-role-card > .button {
+  flex-shrink: 0;
+}
+.staff-role-card > .notice {
+  margin: 0;
+}
+.staff-room-preview {
+  margin-top: 40px;
+}
+.staff-room-preview > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.staff-room-preview a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  padding: 20px;
+  text-decoration: none;
+  transition: border-color 160ms var(--ease);
+}
+.staff-room-preview a:hover {
+  border-color: #777782;
+}
+.users-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 20px 0 24px;
+}
+.users-toolbar > label:first-child {
+  flex: 1;
+}
+.users-toolbar input {
+  width: 100%;
+}
+.managed-users-table {
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+.managed-users-table table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 14px;
+  min-width: 880px;
+}
+.managed-users-table th,
+.managed-users-table td {
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.managed-users-table thead th {
+  font-size: 12px;
+  color: var(--muted);
+  background: #f2f2f5;
+  font-weight: 500;
+}
+.managed-users-table tbody th {
+  font-weight: 500;
+}
+.managed-users-table tr:last-child > * {
+  border: 0;
+}
+.managed-users-table small,
+.managed-users-table td > .meta {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.managed-users-table .button {
+  font-size: 13px;
+  min-height: 40px;
+  padding: 8px 12px;
+}
+.user-banned {
+  display: inline-block;
+  color: #9d0000;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.role-change-reason {
+  max-width: 320px;
+}
+.room-management-content {
+  min-width: 0;
+}
+.room-management-content > .admin-panel {
+  margin-top: 0;
+  margin-bottom: 24px;
+}
+.room-presentation > h3 {
+  font-size: 24px;
+  margin-bottom: 24px;
+}
+.room-presentation .actions {
+  margin-top: 24px;
+}
+.room-removal > p {
+  font-size: 14px;
+  color: var(--muted);
+}
+.authoring-lock {
+  font-size: 14px;
+  color: #725018;
+  border-left: 3px solid #a46b17;
+  padding: 12px 16px;
+  background: #fff6e9;
+  line-height: 1.5;
+  margin: 20px 0;
+}
+.challenge-authoring > .section-heading {
+  margin-top: 0;
+  align-items: flex-start;
+}
+.challenge-authoring > .section-heading h2 {
+  font-size: 26px;
+}
+.challenge-authoring > .section-heading p {
+  font-size: 14px;
+}
+.challenge-authoring-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.challenge-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.challenge-editor-list button {
+  border: 0;
+  border-left: 3px solid transparent;
+  background: #f5f5f8;
+  padding: 16px 12px;
+  text-align: left;
+  transition: background 160ms var(--ease);
+}
+.challenge-editor-list button.active {
+  border-color: var(--cyan);
+  background: #eaf5f6;
+}
+.challenge-editor-list button span {
+  font-size: 14px;
+  display: block;
+  overflow-wrap: anywhere;
+}
+.challenge-editor-list button small {
+  font-size: 11px;
+  display: block;
+  margin-top: 8px;
+  line-height: 1.5;
+}
+.challenge-authoring-layout .empty {
+  margin: 0;
+  padding: 24px;
+}
+.challenge-authoring-layout .empty h2 {
+  font-size: 24px;
+}
+.challenge-authoring-layout .empty p {
+  font-size: 14px;
+}
+.challenge-edit-form {
+  min-width: 0;
+}
+.challenge-edit-form > .section-heading {
+  margin: 0 0 24px;
+  align-items: start;
+}
+.challenge-edit-form h3 {
+  font-size: 22px;
+}
+.challenge-edit-form .text-button {
+  font-size: 13px;
+}
+.challenge-edit-form .answer-visibility {
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+.challenge-edit-form fieldset > .section-heading {
+  margin: 24px 0 16px;
+}
+.accepted-answer {
+  border-top: 1px solid var(--line);
+  padding: 20px 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+.accepted-answer .field {
+  grid-column: 1/-1;
+  margin-bottom: 0;
+}
+.accepted-answer .checkbox-field {
+  font-size: 13px;
+}
+.answer-policy {
+  font-size: 12px;
+  margin: 20px 0 24px;
+  line-height: 1.6;
+}
+.answer-preview {
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+  margin-top: 32px;
+}
+.answer-preview h3 {
+  font-size: 22px;
+}
+.answer-preview > p {
+  font-size: 14px;
+  color: var(--muted);
+}
+.answer-preview .notice {
+  margin: 20px 0 0;
+}
+.answer-preview .button {
+  font-size: 14px;
+}
+.generic-room-art {
+  display: block;
+  max-width: 60%;
+  max-height: 160px;
+  object-fit: contain;
+  margin: auto;
+}
+.room-grid:not(.room-count-5) {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+}
+.room-grid:not(.room-count-5) > .room-card {
+  grid-column: auto;
+  display: flex;
+}
+.room-grid:not(.room-count-5) > .room-card:last-child .room-art {
+  height: 244px;
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+}
+.stage-panel {
+  min-width: 0;
+  overflow-x: auto;
+}
+.standing-table thead .room-col {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.room-awards > section {
+  min-width: 0;
+}
+.new-room-form .button {
+  margin-top: 20px;
+}
+@media (max-width: 1150px) {
+  .challenge-authoring-layout {
+    grid-template-columns: 1fr;
+  }
+  .challenge-editor-list {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .challenge-editor-list button {
+    min-width: 180px;
+    border-left: 0;
+    border-bottom: 3px solid transparent;
+  }
+  .challenge-editor-list button.active {
+    border-bottom-color: var(--cyan);
+  }
+  .staff-role-card {
+    gap: 24px;
+  }
+  .users-toolbar {
+    flex-wrap: wrap;
+  }
+  .users-toolbar > .meta {
+    width: 100%;
+  }
+}
+@media (max-width: 760px) {
+  .staff-role-card {
+    padding: 24px 20px;
+    align-items: start;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .staff-role-card h2 {
+    font-size: 26px;
+  }
+  .staff-role-card p {
+    font-size: 15px;
+  }
+  .staff-room-preview h2 {
+    font-size: 26px;
+  }
+  .staff-room-preview > div {
+    grid-template-columns: 1fr;
+  }
+  .users-toolbar > label {
+    width: 100%;
+  }
+  .users-toolbar select {
+    width: 100%;
+  }
+  .managed-users-table th,
+  .managed-users-table td {
+    padding: 16px;
+  }
+  .room-management-content > .admin-panel {
+    padding: 24px 20px;
+  }
+  .challenge-authoring-layout {
+    gap: 20px;
+  }
+  .challenge-edit-form > .section-heading {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .accepted-answer {
+    grid-template-columns: 1fr;
+  }
+  .accepted-answer .text-button {
+    justify-self: start;
+  }
+  .room-grid:not(.room-count-5) > .room-card:last-child .room-art {
+    height: 220px;
+  }
+  .stage-table {
+    min-width: 0 !important;
+  }
+  .staff-room-preview a {
+    padding: 16px 20px;
   }
 }
