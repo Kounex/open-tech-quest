@@ -160,3 +160,27 @@ Independent review found a queued role-change race after native actor demotion;
 the route now rechecks persisted admin/banned status after the shared event lock.
 Real native demotion and banning regressions passed on both databases and were
 independently rechecked; no findings remain.
+
+## Release verification — 2026-11-04
+
+Released [0.1.12](https://github.com/Kounex/open-tech-quest/releases/tag/v0.1.12)
+from source `30128f4`. [Image CI](https://github.com/Kounex/open-tech-quest/actions/runs/41746150419)
+passed frontend check/build, empty-install smoke, both database suites and the
+container test target. Each backend run discovered 96 cases: SQLite skipped
+three MariaDB-specific cases and MariaDB skipped two SQLite-specific cases;
+all remaining cases passed. Every dialect-specific case ran on its target DB.
+
+All 37 GitOps kustomizations passed schema/build validation and
+[GitOps CI](https://github.com/Kounex/ocp-gitops/actions/runs/41746961637) passed.
+[GitOps revision 17b2da4](https://github.com/Kounex/ocp-gitops/commit/17b2da4e3c882b3b41d018806e1aac7f8b8e3bd8)
+pins init and runtime to the same tested version/digest. Argo Synced/Healthy,
+bound PVCs and the ready Doppler ExternalSecret were verified. A fresh private
+SQL/uploads backup preceded the migration.
+
+Read-only live verification confirmed administrator capabilities, the Users
+list without seeded maintainer grants, a private-data-free room overview and
+demo-locked challenge workspaces. All four served SPA/native assets matched
+the tested build. The draft event, five default rooms, 25 demo challenges,
+public registration and attendance off/generation zero remained unchanged;
+there were still no participant/team/readiness records. Production QA did
+not create users, grant roles, alter rooms/demo content or start the event.
