@@ -5,12 +5,16 @@
 1. Verify backups cover MariaDB and uploads, including plugin tables, and
    rehearse restoring into a disposable database. CTFd exports include plugin
    tables, but the matching plugin code/migrations must also be available.
-2. Create and test every challenge in the native CTFd editor. Configure
-   hints, files, flag validation and attempt limits there. Keep real answers
-   in CTFd's database, never this repository or image builds.
-3. In `/quest/admin`, assign challenges to rooms in the required order. A
-   challenge belongs to one room. The room editor manages Requirements;
-   native editing of challenge content remains available.
+2. Ask maintainers to register normal accounts, then use **Organize → Users**
+   to grant **Challenge maintainer**. These staff accounts are excluded from
+   attendance, allocation and play. Only full administrators manage roles.
+3. In **Organize → Rooms**, rename/add/remove unused rooms and create standard
+   flag challenges with Markdown descriptions, accepted flags and answer-check
+   previews. Set the required order; each challenge belongs to one room and
+   Requirements update automatically. Remove the organizer demo before real
+   authoring. Keep answers in CTFd’s database, never Git or image builds. Native
+   challenge editing remains available to administrators for files/hints and
+   advanced settings. See [maintainers.md](maintainers.md) for lifecycle rules.
 4. Add room logos/artwork using theme asset URLs. Selected local web assets
    can be packaged under `branding/`; source/provenance belongs in
    `branding/sources.json`. Keep raw internal catalogue archives private.

@@ -5,12 +5,15 @@
 Open Tech Quest is the team challenge experience for the Red Hat Hands-On
 Day in Darmstadt. Each person logs into their own account, teams share
 progress, and teammates may work in different rooms simultaneously.
-The five rooms are OpenShift, Ansible, RHEL, Security, and AI.
+The five default rooms are OpenShift, Ansible, RHEL, Security, and AI. Room
+managers can rename them, add custom rooms and safely remove unused rooms.
+See [maintainers.md](maintainers.md) for staff permissions and authoring.
 
 The participant experience replaces the flat challenge board. Each room
 contains an ordered chain of native CTFd challenges. CTFd Requirements
 enforce that chain; the plugin additionally enforces room start and asset
-access. Keep native administration available for authoring challenges.
+access. Room managers author standard flag challenges in Organize; native
+administration remains available to full administrators.
 
 ## Design direction
 
@@ -127,7 +130,9 @@ session and CTFd CSRF checks. No administrator token in the browser.
 `rosters_release_at`, `room_clock` (explicit/event), `overall_clock`
 (event/team), `server_now`, `results_published`.
 
-`Viewer`: `authenticated`, `id`, `name`, `team_id`, `team_name`, `admin`.
+`Viewer`: `authenticated`, `id`, `name`, `team_id`, `team_name`, `admin`,
+`role` (guest/participant/maintainer/administrator), `can_manage_rooms`,
+`can_manage_users`. Maintainers are staff, excluded from participant onboarding.
 
 `Room`: `id`, `slug`, `name`, `subtitle`, `description`, `position`,
 `theme` (accent, logo_url, hero_url, layout), `steps`, `progress`.

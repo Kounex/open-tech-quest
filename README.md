@@ -19,10 +19,14 @@ without maintaining a fork of CTFd's core.
 - Room prizes by progress then elapsed time; overall prizes by distinct solves
   then elapsed event time. Genuine ties retain the same rank.
 - A projector overview for 50 named teams, focused standings and awards views.
+- Admin-only user management and a Rooms-only challenge maintainer role.
+- Integrated standard challenge/flag authoring and customizable room creation/removal.
 - Organizer controls for public registration, room composition, themes, team allocation,
   roster release, exclusions, time corrections, CSV exports and publication.
 
-The first installation creates an event in **draft** with five empty rooms.
+The first installation creates an event in **draft** with five empty default rooms.
+Rename, add or remove unused rooms from Organize; custom rooms have neutral
+themes and optional branded assets.
 It does not create participants, competition challenges or flags. Organizers
 can explicitly load and remove a self-contained demo from the Event tab: five
 challenges per room, hints and rich Markdown room introductions. The demo stays
@@ -40,10 +44,13 @@ The helper generates a private local session key in ignored `.env`, builds
 the application and exposes it only at `http://127.0.0.1:8000`. Complete the
 native CTFd setup wizard to create your administrator. Then visit `/quest/admin`.
 
-Author challenges in native `/admin/challenges`, including descriptions,
-flags, files and hints. In the quest organizer workspace, assign them to
-rooms in the required order. Room settings keep CTFd Requirements and next
-challenge links consistent. Configure prize timing and teams before starting.
+Author standard flag challenges in **Organize → Rooms**, with Markdown descriptions,
+accepted flags, answer-check previews and ordered prerequisite chains. Native
+`/admin/challenges` remains available to administrators for additional content
+features. In **Organize → Users**, promote registered accounts to Challenge
+maintainer; they see only Rooms and do not enter attendance or team allocation.
+See [staff and room management](docs/maintainers.md). Configure prize timing and
+teams before starting.
 
 Native self-service team joining is replaced by organizer allocation. After
 registration, participants confirm attendance in the quest lobby. Organizers
