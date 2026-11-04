@@ -2082,3 +2082,44 @@ class QuestIntegration(unittest.TestCase):
         self.assertEqual(next(t for t in ranked["teams"] if t["id"]==self.team_id)["total"],0)
         with self.app.app_context():
             self.assertEqual(Solves.query.count(),1)
+
+    def test_maintainer_role_write_rechecks_demoted_or_banned_actor_after_waiting(self):
+        from CTFd.plugins.open_tech_quest import api as api_module
+        from flask import request
+        self.open_onboarding()
+        self.attendance_window(True)
+        timestamp = self.ready_user(self.carol)["ready_at"]
+        original = api_module.event
+        for uid,mutation in ((5,{"type":"user"}),(6,{"banned":True})):
+            with self.subTest(mutation=mutation):
+                with self.app.app_context():
+                    db.session.add(Users(id=uid,name=f"Temporary admin {uid}",email=f"admin{uid}@example.test",type="admin",password="test-only"))
+                    db.session.commit()
+                entered,release = threading.Event(),threading.Event()
+                def gate(lock=False):
+                    if lock and request.path == PREFIX+"/admin/users/4/role":
+                        entered.set()
+                        if not release.wait(3):
+                            raise RuntimeError("Queued role grant gate not released")
+                    return original(lock=lock)
+                with patch.object(api_module,"event",side_effect=gate):
+                    with ThreadPoolExecutor(max_workers=1) as pool:
+                        waiting = pool.submit(lambda:self.post(self.client(uid),PREFIX+"/admin/users/4/role",{"role":"maintainer","confirm":True},"PATCH"))
+                        try:
+                            self.assertTrue(entered.wait(3))
+                            changed = self.post(self.admin,f"/api/v1/users/{uid}",mutation,"PATCH")
+                            self.assertEqual(changed.status_code,200,changed.get_data(as_text=True))
+                            with self.app.app_context():
+                                actor = db.session.query(Users.type,Users.banned).filter(Users.id==uid).one()
+                                self.assertTrue(actor.type != "admin" or actor.banned)
+                        finally:
+                            release.set()
+                        response = waiting.result()
+                self.assertEqual(response.status_code,403,response.get_data(as_text=True))
+                self.assertEqual(response.json["error"],"Administrator access required")
+                with self.app.app_context():
+                    self.assertIsNone(QuestMaintainer.query.get(4))
+                    self.assertEqual(Users.query.get(4).team_id,self.other_id)
+                    self.assertFalse(Users.query.get(4).hidden)
+                    self.assertEqual(QuestAudit.query.filter_by(action="user.role").count(),0)
+                self.assertEqual(self.carol.get(PREFIX+"/onboarding").json["data"]["ready_at"],timestamp)

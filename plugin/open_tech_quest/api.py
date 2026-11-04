@@ -921,6 +921,11 @@ def managed_users():
 @admin
 def change_user_role(user_id):
     data, e = body(), event(lock=True)
+    # Native account changes may commit while this request waits for the lock.
+    # Read scalar columns rather than native role caches or an earlier ORM user.
+    actor = db.session.query(Users.type, Users.banned).filter(Users.id == session.get("id")).first()
+    if actor is None or actor.type != "admin" or actor.banned:
+        fail("Administrator access required", 403)
     if set(data) != {"role", "confirm"} or data["confirm"] is not True or data["role"] not in ("participant", "maintainer"):
         fail("Supply role participant or maintainer and confirm: true")
     user = Users.query.get(user_id)
