@@ -62,3 +62,51 @@ A private SQL/uploads backup was taken before migration. Scheduled off-cluster
 backups and SMTP still need event-environment configuration before relying on
 recovery or password-reset mail. No credentials or participant data are stored
 in this repository.
+
+## Account moderation and controlled late admission — 2026-11-05
+
+Release **0.1.14**, source
+[`28aac6c`](https://github.com/Kounex/open-tech-quest/commit/28aac6cc855ade7f7bf0b61436f8277f24abc7b9),
+passed [release CI](https://github.com/Kounex/open-tech-quest/actions/runs/42051966151):
+143 cases on each of SQLite and MariaDB, with three skips per dialect;
+frontend check/build; empty-install runtime smoke; and the publication test target.
+The first full run exposed one older fixture that attempted Start without an
+attended assigned team. The fixture now supplies real participant attendance;
+the runtime guard remains intact. Independent review found no outstanding issues.
+
+The anonymous GHCR pull and OCI labels verified the exact tested revision.
+Both initialization and runtime use:
+
+```text
+ghcr.io/kounex/open-tech-quest:0.1.14@sha256:352c1f8918052b33cf4735bd54887f8c8fc1d682c7a0c7f31ba8f48dea32d123
+```
+
+Actual disposable browser upgrade journeys covered identity-bound role changes
+and deletion, captain repair, stale previews and reused account IDs; banning,
+native evidence retention, wrong/correct teammate recovery, original/recovered
+award timing and unbanning; and post-start self-registration/check-in followed
+by reasoned admission into an existing or additional named team. Existing team
+standings and clocks remained unchanged during admission. Restart preserved
+native submissions, recovery evidence, attendance and memberships. Users and
+Teams accessibility scans reported zero violations or incomplete checks; Users
+fit a 390px viewport without document-wide overflow. Details are recorded in
+[user lifecycle](user-lifecycle.md), [contribution moderation](contribution-moderation.md)
+and [late admission](late-admission.md).
+
+All 37 GitOps kustomizations passed build/schema validation; GitOps
+[`f959349`](https://github.com/Kounex/ocp-gitops/commit/f95934952cb2faecf9871ac9bf44178ad524736b)
+also passed [repository CI](https://github.com/Kounex/ocp-gitops/actions/runs/42053529573).
+Argo reported Synced / Healthy at that revision and the deployment completed
+with both containers pinned above. MariaDB/Redis remained running, all three
+PVCs remained Bound and the Doppler ExternalSecret remained Ready.
+
+Read-only authenticated production checks verified the new capabilities,
+private/no-store user responses and byte-identical built frontend assets.
+The saved baseline remained unchanged: draft/check-in phase, public registration,
+attendance closed at generation zero, five rooms, 25 demo challenges, one native
+administrator and no participants, teams or readiness records. No production
+user was deleted, demoted, banned or admitted for verification. The private
+SQL/uploads backup taken before this upgrade is
+`/root/ocp-backups/ctfd/pre-account-moderation-late-20261105T145950Z/`.
+Restore matching plugin code with the database: older code cannot interpret the
+new native `quest_recovery` submission subtype.
