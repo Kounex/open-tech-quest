@@ -167,8 +167,8 @@ independently rechecked; no findings remain.
 
 ## Release verification — 2026-11-04
 
-Released [0.1.12](https://github.com/Kounex/open-tech-quest/releases/tag/v0.1.12)
-from source `30128f4`. [Image CI](https://github.com/Kounex/open-tech-quest/actions/runs/41746150419)
+Released [0.1.12](https://github.com/open-tech-quest/ctfd-plugin/releases/tag/v0.1.12)
+from source `30128f4`. [Image CI](https://github.com/open-tech-quest/ctfd-plugin/actions/runs/41746150419)
 passed frontend check/build, empty-install smoke, both database suites and the
 container test target. Each backend run discovered 96 cases: SQLite skipped
 three MariaDB-specific cases and MariaDB skipped two SQLite-specific cases;

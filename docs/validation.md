@@ -1,7 +1,7 @@
 # Release verification — 2026-11-03
 
 Open Tech Quest **0.1.2**, source `2373077`, was published by
-[CI run 41633395583](https://github.com/Kounex/open-tech-quest/actions/runs/41633395583).
+[CI run 41633395583](https://github.com/open-tech-quest/ctfd-plugin/actions/runs/41633395583).
 The public GHCR image was pulled anonymously before deployment. Its index digest:
 
 ```text
@@ -66,8 +66,8 @@ in this repository.
 ## Account moderation and controlled late admission — 2026-11-05
 
 Release **0.1.14**, source
-[`28aac6c`](https://github.com/Kounex/open-tech-quest/commit/28aac6cc855ade7f7bf0b61436f8277f24abc7b9),
-passed [release CI](https://github.com/Kounex/open-tech-quest/actions/runs/42051966151):
+[`28aac6c`](https://github.com/open-tech-quest/ctfd-plugin/commit/28aac6cc855ade7f7bf0b61436f8277f24abc7b9),
+passed [release CI](https://github.com/open-tech-quest/ctfd-plugin/actions/runs/42051966151):
 143 cases on each of SQLite and MariaDB, with three skips per dialect;
 frontend check/build; empty-install runtime smoke; and the publication test target.
 The first full run exposed one older fixture that attempted Start without an
@@ -114,8 +114,8 @@ new native `quest_recovery` submission subtype.
 ## Attendance-first team formation — 2026-11-05
 
 Release **0.1.15**, source
-[`6592c67`](https://github.com/Kounex/open-tech-quest/commit/6592c67a8aca06980fedbd82fe7edd380d4d57e9),
-passed [release CI](https://github.com/Kounex/open-tech-quest/actions/runs/42070881719):
+[`6592c67`](https://github.com/open-tech-quest/ctfd-plugin/commit/6592c67a8aca06980fedbd82fe7edd380d4d57e9),
+passed [release CI](https://github.com/open-tech-quest/ctfd-plugin/actions/runs/42070881719):
 150 cases on each database, with three skips per dialect; frontend check/build;
 runtime empty-install smoke; and publication tests. The first full run caught
 one older fixture inserting duplicate team-name metadata after an organizer

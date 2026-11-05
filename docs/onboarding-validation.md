@@ -1,7 +1,7 @@
 # Onboarding release verification — 2026-11-03
 
 Open Tech Quest **0.1.8**, source `0014b7b`, passed
-[CI run 41670913862](https://github.com/Kounex/open-tech-quest/actions/runs/41670913862).
+[CI run 41670913862](https://github.com/open-tech-quest/ctfd-plugin/actions/runs/41670913862).
 The GHCR manifest was fetched anonymously before updating both initialization
 and runtime image references to:
 

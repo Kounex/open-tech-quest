@@ -79,7 +79,7 @@ the production image.
 ## Images and deployment
 
 GitHub Actions publishes tested, versioned images to
-`ghcr.io/kounex/open-tech-quest`. Releases use semantic version tags, never
+`ghcr.io/open-tech-quest/ctfd-plugin`. Releases use semantic version tags, never
 `latest`. CI checks the frontend, runs both database test suites, and starts
 the final image before publication. Dependabot tracks packages and pinned
 base images; upgrades of the underlying CTFd line require an explicit review.

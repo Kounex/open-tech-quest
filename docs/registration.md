@@ -36,7 +36,7 @@ teams. Administrator account provisioning remains native administrator behavior.
 
 ## Verification — 0.1.10
 
-[CI run 41716840923](https://github.com/Kounex/open-tech-quest/actions/runs/41716840923)
+[CI run 41716840923](https://github.com/open-tech-quest/ctfd-plugin/actions/runs/41716840923)
 passed frontend checks, a real empty-install runtime smoke and 62 backend tests
 per database. SQLite skipped three dialect-specific cases; MariaDB skipped two.
 
