@@ -157,7 +157,7 @@ def invalidate(uid, tid=None):
 
 
 def usable_admins():
-    return Users.query.filter_by(type="admin", banned=False).count()
+    return Users.query.filter(Users.type == "admin", Users.banned.isnot(True)).count()
 
 
 def native_change(user, data, e):

@@ -2846,3 +2846,15 @@ class QuestIntegration(unittest.TestCase):
         row=self.timing_standings()[self.team_id]
         self.assertEqual(row["total"],1)
         self.assertEqual(row["room_progress"][0]["milestone_elapsed_ms"],round((at-start).total_seconds()*1000))
+
+    def test_lifecycle_legacy_nullable_banned_status_matches_native_eligibility(self):
+        with self.app.app_context():
+            Users.query.filter(Users.id.in_([1,2])).update({"banned":None},synchronize_session=False)
+            db.session.commit()
+            from CTFd.plugins.open_tech_quest.lifecycle import usable_admins
+            self.assertEqual(usable_admins(),1)
+        self.action("start")
+        self.start()
+        accepted=self.solve(self.alice,1)
+        self.assertEqual(accepted.json["data"]["status"],"correct",accepted.get_data(as_text=True))
+        self.assertEqual(self.timing_standings()[self.team_id]["total"],1)

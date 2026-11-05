@@ -105,7 +105,7 @@ class Projection:
         for model, timestamp in ((Solves, Solves.date), (QuestRecoverySolve, QuestRecoverySolve.credited_at)):
             contributions.extend(model.query.with_entities(model.team_id, model.challenge_id, timestamp)
                                  .join(Users, Users.id == model.user_id)
-                                 .filter(Users.type == "user", Users.banned.is_(False), model.team_id.isnot(None), model.challenge_id.in_(list(self.mapped)),
+                                 .filter(Users.type == "user", Users.banned.isnot(True), model.team_id.isnot(None), model.challenge_id.in_(list(self.mapped)),
                                          ~model.user_id.in_(QuestMaintainer.query.with_entities(QuestMaintainer.user_id))).all())
         for team_id, challenge_id, at in contributions:
             room_id = self.mapped[challenge_id]
