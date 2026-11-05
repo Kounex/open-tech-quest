@@ -68,6 +68,9 @@ export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
             can be deleted when safe.
           </p>
         </div>
+        <a href="/admin/submissions" className="button secondary">
+          Submission history
+        </a>
       </div>
       <div className="users-toolbar">
         <label>

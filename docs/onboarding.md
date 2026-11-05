@@ -109,3 +109,5 @@ Run changed integration tests during implementation; full dialect/build/runtime
 CI gates once at release, then exercise isolated real participant/admin sessions.
 
 Account role, access and deletion operations are defined in [user-lifecycle.md](user-lifecycle.md). Initial allocation preview includes a server-bound fingerprint, required with groups on apply; account incarnations participate in that fingerprint as well as optimizer fingerprints.
+
+Controlled post-finalization attendance and admission are defined in [late-admission.md](late-admission.md). They add only checked-in, history-free, unassigned newcomers, without moving existing players or resetting clocks; initial allocation and optimization stay locked.

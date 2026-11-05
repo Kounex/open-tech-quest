@@ -41,6 +41,27 @@
 8. Configure SMTP before relying on password reset/email verification. It is
    an event deployment setting; no mail credentials belong in this repo.
 
+## Event-day sequence and late arrivals
+
+Open registration in the morning and attendance capture when actual presence
+should be confirmed. Signed-in, returning and newly registered users receive
+the same explicit prompt while capture is open. At cutoff close registration
+and capture. If provisional random allocation has not been performed, Preview /
+Apply initial allocation while still in Team preparation. Then **Move to
+attendance review → Preview attendance optimization → Apply reviewed groups**.
+Only checked-in eligible people enter final grouping. Participants confirm their
+team names; organizers **Finalize rosters**, then **Start event**. Closing the
+windows alone does not allocate or finalize teams.
+
+After finalization, organizers may open a **late-only attendance window** for
+unassigned newcomers and reopen registration if needed. A newcomer registers /
+logs in and confirms their own presence. In Teams, select checked-in late
+arrivals and admit them into a named team with room, or create an additional
+team with an agreed final name and recorded reason. Existing members and clocks
+remain fixed. New teams start rooms explicitly and use the preconfigured timing
+policies. Close the windows when done; cutoff/closed/published events refuse
+admission. See [late-admission.md](late-admission.md).
+
 ## Managing account roles and access
 
 Use **Organize → Users** to grant room access or **Return to participant** after

@@ -95,3 +95,22 @@ solves/clock/rank remain intact when deleting is refused. Banning removes only t
 teammate contributions and all raw history remain, with legitimate re-solves.
 Production verification is read-only; never delete, demote or ban actual users
 for QA. Back up privately before deploying the validated image through GitOps.
+
+## Isolated browser acceptance
+
+An actual 0.1.12 upgrade preserved a maintainer, two checked-in participants and
+their provisional team. Returning the maintainer to Participant left it unassigned
+and unconfirmed. Deleting an unused checked-in captain removed only its account/
+readiness, selected the remaining member as captain, retained the team, rejected
+an older allocation fingerprint, and logged the deleted browser out. Re-registering
+the same name/email reused the SQLite ID; all three old identity-bound actions
+(role/access/delete) returned 409 and preserved the new account.
+
+The ban/recovery journey is recorded in [contribution-moderation.md](contribution-moderation.md);
+post-start placement is recorded in [late-admission.md](late-admission.md). Users
+and Teams WCAG A/AA scans reported zero violations/incomplete checks. Users fit
+a 390px viewport without document-wide horizontal scrolling. Native protected
+submission history successfully rendered both original and recovery records.
+Independent reviews verified the queued actor/session corrections, native
+validation rollback, history/captain handling, fingerprints, grading integration,
+timing and late admission. No review findings remain.

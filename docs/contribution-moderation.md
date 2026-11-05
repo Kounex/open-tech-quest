@@ -66,7 +66,12 @@ decreases. Public/projector/organizer/export use the same effective projection.
 Recovery records retain protected submission evidence and actor/team/challenge/
 timestamp references. Audit entries contain IDs and action metadata, never raw
 flags or credentials. Native investigation/export plus matching plugin tables
-must retain original and recovery history. Deleting a history-bearing account
+must retain original and recovery history. **Users → Submission history** opens
+native `/admin/submissions`, which renders original records and `quest_recovery`
+submissions together; per-account record links also remain available. A database
+containing recovery submissions requires matching plugin code when restoring or
+rolling back; do not run pre-recovery code against these new submission types.
+Deleting a history-bearing account
 remains refused, including an account with a recovery solve. Banned accounts stay
 visible to administrators with their role and retained history.
 
@@ -81,3 +86,22 @@ recovery evidence blocks deletion/promotion; native solved-only content denial;
 and ordinary native attempts/administrator previews unchanged. Actual browser
 journeys must demonstrate ban → team progress change → re-solve → restored progress,
 plus unban without duplicate credit and a published-results protection.
+
+## Actual browser timing acceptance
+
+A two-member synthetic team each held one original native solve. Banning the
+first solver removed only its credit: room prefix became zero while the later
+teammate solve remained in the overall total. The remaining teammate submitted
+one wrong recovery answer, then a correct one through the ordinary participant
+UI. Room completion and distinct total returned to two using the new server
+recovery milestone, much later than the original milestone. Unbanning restored
+the exact original room/overall award times and total two without duplication.
+Published-contributor banning returned 409 and left the snapshot unchanged.
+
+Original native IDs, users, teams, challenge IDs and timestamps were retained;
+the linked recovery row survived restart. The new raw submission remained
+visible in native protected investigation. Focused SQLite/MariaDB tests also
+cover count-first rankings, losing the final counted solve, pause/cutoff, both
+clock origins, true ties, repeated bans and immediate same-second native solves.
+A final participant state-priority correction locks later steps while an earlier
+required contribution is missing, retaining their timestamps and overall credit.

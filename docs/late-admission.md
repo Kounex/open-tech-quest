@@ -19,6 +19,9 @@ window enforcement; opening this window never alters registration or roster phas
 New confirmations in finalized phase are marked late. No new account can start
 or read challenges until it is assigned through the organizer action. Competition
 start still requires capture closed; after start an explicit late window can open.
+History-free newcomers who confirm after finalization can wait unassigned across
+Start, provided capture is closed and the existing attended rosters are valid.
+They cannot play until admitted; they do not delay everyone else’s start.
 
 ## Administration
 
@@ -89,3 +92,21 @@ rejection, unchanged clocks/scores, capacity and concurrent admission, fresh/sta
 fingerprints including ID reuse, named additional team, native-route restrictions,
 paused admission with play still paused, close/cutoff refusal, and actual browser
 signup → late popup → reasoned placement → shared team play on SQLite/MariaDB.
+
+## Actual browser acceptance
+
+In an already-live finalized event, a new registration received the late-only
+readiness dialog immediately. Before explicit confirmation it had no attendance
+or room-start permission. After self-confirmation, capture was closed and an
+admin admitted it with a reason into the existing named team. The signed-in
+browser acquired that team automatically; the original team's complete standing,
+progress and award times remained byte-for-byte equivalent as data.
+
+A second newcomer registered while capture was closed, saw no readiness button
+or dialog, and received the prompt automatically when late capture reopened.
+After self-confirmation, an admin created an agreed final named team. It had no
+progress or starts, started its room explicitly and earned a normal native solve.
+It used the common event overall origin and its explicit room origin, while the
+existing team's rank and times stayed unchanged. Closing both windows and an
+application restart preserved memberships, raw original solves, recovery history
+and original award times. No production accounts or records were used for QA.

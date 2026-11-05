@@ -19,7 +19,9 @@ without maintaining a fork of CTFd's core.
 - Room prizes by progress then elapsed time; overall prizes by distinct solves
   then elapsed event time. Genuine ties retain the same rank.
 - A projector overview for 50 named teams, focused standings and awards views.
-- Admin-only user management and a Rooms-only challenge maintainer role.
+- Admin-only user management, reversible maintainer roles and safe account deletion.
+- Auditable bans, legitimate teammate re-solves and consistent award timing.
+- Controlled late check-in/admission without reshuffling or restarting clocks.
 - Integrated standard challenge/flag authoring and customizable room creation/removal.
 - Organizer controls for public registration, room composition, themes, team allocation,
   roster release, exclusions, time corrections, CSV exports and publication.
