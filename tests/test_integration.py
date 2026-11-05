@@ -2646,10 +2646,19 @@ class QuestIntegration(unittest.TestCase):
         without_alice=standing()
         self.assertEqual(without_alice["total"],1)
         self.assertEqual(without_alice["room_progress"][0]["solved"],0)
+        relocked=self.bob.get(PREFIX+"/rooms/openshift").json["data"]["steps"]
+        self.assertEqual([step["state"] for step in relocked],["available","locked"])
+        self.assertIsNotNone(relocked[1]["solved_at"])
+        self.assertEqual(self.bob.get("/api/v1/challenges/2").status_code,403)
+        preview=self.admin.get(PREFIX+"/rooms/openshift").json["data"]["steps"]
+        self.assertEqual([step["state"] for step in preview],["available","available"])
         recovered=self.solve(self.bob,1)
         self.assertEqual(recovered.json["data"]["status"],"correct",recovered.get_data(as_text=True))
         self.assertEqual(standing()["total"],2)
         self.assertEqual(standing()["room_progress"][0]["solved"],2)
+        reopened=self.bob.get(PREFIX+"/rooms/openshift").json["data"]["steps"]
+        self.assertEqual([step["state"] for step in reopened],["solved","solved"])
+        self.assertEqual(reopened[1]["solved_at"],relocked[1]["solved_at"])
         with self.app.app_context():
             self.assertEqual(QuestRecoverySolve.query.count(),1)
         self.assertEqual(self.account_action(2,"access",active=True).status_code,200)

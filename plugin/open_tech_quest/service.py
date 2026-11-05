@@ -148,7 +148,10 @@ class Projection:
                 continue
             solved = step.challenge_id in solves
             visible = challenge.state == "visible"
-            state = "solved" if solved else ("available" if (admin or (enabled and prefix_open and visible)) else "locked")
+            if not admin and not prefix_open:
+                state = "locked"
+            else:
+                state = "solved" if solved else ("available" if admin or (enabled and visible) else "locked")
             data.append({"id": step.challenge_id, "title": challenge.name, "position": step.position,
                          "state": state, "solved_at": iso(solves.get(step.challenge_id))})
             prefix_open = prefix_open and solved
