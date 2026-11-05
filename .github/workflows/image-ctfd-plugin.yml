@@ -1,4 +1,4 @@
-name: image open-tech-quest
+name: image ctfd-plugin
 
 on:
   push:
@@ -28,7 +28,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: image-open-tech-quest-${{ github.event.pull_request.number || 'publish' }}
+  group: image-ctfd-plugin-${{ github.event.pull_request.number || 'publish' }}
   cancel-in-progress: false
 
 jobs:
@@ -41,7 +41,7 @@ jobs:
     needs: quality
     uses: ./.github/workflows/build-image.yml
     with:
-      image: open-tech-quest
+      image: ctfd-plugin
       context: .
       tag_prefix: v
       test_target: test
@@ -70,4 +70,4 @@ jobs:
           PR: ${{ github.event.pull_request.html_url }}
         run: |
           gh pr merge "$PR" --squash --delete-branch
-          gh workflow run image-open-tech-quest.yml --ref "${{ github.event.repository.default_branch }}" -R "$GITHUB_REPOSITORY"
+          gh workflow run image-ctfd-plugin.yml --ref "${{ github.event.repository.default_branch }}" -R "$GITHUB_REPOSITORY"

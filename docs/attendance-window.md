@@ -137,8 +137,8 @@ The mobile dialog fit a 390px viewport without horizontal scrolling.
 
 ## Release verification — 2026-11-03
 
-Released [0.1.11](https://github.com/Kounex/open-tech-quest/releases/tag/v0.1.11)
-from source `9b80b7d`. [CI](https://github.com/Kounex/open-tech-quest/actions/runs/41725040989)
+Released [0.1.11](https://github.com/open-tech-quest/ctfd-plugin/releases/tag/v0.1.11)
+from source `9b80b7d`. [CI](https://github.com/open-tech-quest/ctfd-plugin/actions/runs/41725040989)
 passed 72 backend tests on each of SQLite and MariaDB, frontend checks/build,
 empty-install runtime smoke and the container’s test target. All 37 GitOps
 kustomizations passed local remote-host schema validation and

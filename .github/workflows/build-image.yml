@@ -1,11 +1,10 @@
 # Reusable workflow: next version -> build -> push to GHCR -> git tag -> release.
 #
-# Canonical copy: it-env/templates/container-image/build-image.yml. Every repo
-# that publishes our own images carries an identical copy at
-# .github/workflows/build-image.yml; change it here first, then copy it over.
+# Project-maintained portable variant of the fleet container-image workflow.
+# Changes here are owned by this repository, not the private fleet template.
 #
 # The version comes from the repo's git tags: the newest `<tag_prefix>X.Y.Z`
-# plus one `bump` step. The image is pushed as ghcr.io/kounex/<image>:X.Y.Z,
+# plus one `bump` step. The image is pushed as ghcr.io/<owner>/<image>:X.Y.Z,
 # the commit is tagged `<tag_prefix>X.Y.Z`, and (unless release: false) a
 # GitHub release with generated notes is created, which is what the fleet
 # board shows as release notes. A repo needs one seed tag before the first run.
@@ -15,7 +14,7 @@ on:
   workflow_call:
     inputs:
       image:
-        description: Package name, published as ghcr.io/kounex/<image>
+        description: Package name, published under the lowercase repository owner
         type: string
         required: true
       context:
@@ -78,6 +77,8 @@ jobs:
           esac
           echo "previous=$last" >> "$GITHUB_OUTPUT"
           echo "version=$major.$minor.$patch" >> "$GITHUB_OUTPUT"
+          namespace=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "namespace=$namespace" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v4
 
@@ -105,7 +106,7 @@ jobs:
           context: ${{ inputs.context }}
           file: ${{ inputs.file || format('{0}/Dockerfile', inputs.context) }}
           push: ${{ inputs.push }}
-          tags: ghcr.io/kounex/${{ inputs.image }}:${{ steps.v.outputs.version }}
+          tags: ghcr.io/${{ steps.v.outputs.namespace }}/${{ inputs.image }}:${{ steps.v.outputs.version }}
           # A Dockerfile can declare `ARG BUILD_DATE` right before a step that
           # must refetch on every publish (stem-studio's yt-dlp download); the
           # layers above it stay cached.
@@ -123,6 +124,7 @@ jobs:
         if: inputs.push
         env:
           GH_TOKEN: ${{ github.token }}
+          NAMESPACE: ${{ steps.v.outputs.namespace }}
           IMAGE: ${{ inputs.image }}
           VERSION: ${{ steps.v.outputs.version }}
           TAG: ${{ inputs.tag_prefix }}${{ steps.v.outputs.version }}
@@ -143,4 +145,4 @@ jobs:
             } > notes.md
             gh release create "$TAG" --title "$IMAGE $VERSION" --notes-file notes.md --latest=false
           fi
-          echo "Published ghcr.io/kounex/$IMAGE:$VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published ghcr.io/$NAMESPACE/$IMAGE:$VERSION" >> "$GITHUB_STEP_SUMMARY"

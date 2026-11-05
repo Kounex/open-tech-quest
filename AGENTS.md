@@ -1,6 +1,6 @@
 # Open Tech Quest
 
-Public repository `Kounex/open-tech-quest`. A CTFd 3.8.9 plugin and a React
+Public repository `open-tech-quest/ctfd-plugin`. A CTFd 3.8.9 plugin and a React
 participant/admin/projector application for the Red Hat Hands-On Day.
 
 Read `docs/design.md` and `docs/implementation.md` before changing behavior.
@@ -26,7 +26,7 @@ They define the shared API, prize rules, event lifecycle, and design direction.
 - Theme changes must preserve room IDs, memberships, starts, and solves.
 - Every finished unit is committed and pushed. Every release runs backend
   integration tests, frontend checks/build, and container smoke tests.
-- CI publishes versioned images to `ghcr.io/kounex/open-tech-quest`; GitOps
+- CI publishes versioned images to `ghcr.io/open-tech-quest/ctfd-plugin`; GitOps
   pins a tested tag and digest. No secrets in image build arguments/layers.
 - Independent frontend/backend work and independent review are appropriate
   for this project; assign disjoint file ownership and follow review-bar.
