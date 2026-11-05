@@ -67,6 +67,11 @@ Reject queued actions from actors demoted/banned/deleted while waiting. Reject
 ready/start/attempt writes from targets deleted/deactivated or made staff while
 waiting; no stale successful attendance or solve, and no deleted-object 500.
 Role/access/delete changes invalidate reviewed allocation/optimization plans.
+Initial allocation preview now returns `{groups,fingerprint}` and apply requires
+`{preview:false,groups,fingerprint}` (plus existing optional team_size). Include
+account incarnation in fingerprints so deleting/re-registering the same numeric
+ID cannot make an old proposal valid again. Missing/stale fingerprints require
+another preview without applying any assignment.
 Account deletion never deletes a team record or another member's progress.
 
 ## UI and verification

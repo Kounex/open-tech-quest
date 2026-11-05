@@ -107,3 +107,5 @@ loaded, draft, and continues to block event start independently of onboarding.
 Review each component against the concrete contract, then the combined branch.
 Run changed integration tests during implementation; full dialect/build/runtime
 CI gates once at release, then exercise isolated real participant/admin sessions.
+
+Account role, access and deletion operations are defined in [user-lifecycle.md](user-lifecycle.md). Initial allocation preview includes a server-bound fingerprint, required with groups on apply; account incarnations participate in that fingerprint as well as optimizer fingerprints.

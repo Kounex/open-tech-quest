@@ -174,7 +174,8 @@ Public standings expose team display names and aggregate results only.
   Validate IDs, duplicates, cross-room reuse. Update native Requirements,
   next_id and position consistently; topology immutable after draft.
 - POST `/admin/teams/allocate`: `{team_size, preview:true}` -> proposed
-  `{groups:[{name,user_ids}]}`; commit with `{preview:false,groups:[...]}`.
+  `{groups:[{name,user_ids}],fingerprint}`; commit with
+  `{preview:false,groups:[...],fingerprint}`.
   Validate the complete current eligible population at commit time.
 - PATCH `/admin/teams/<id>`: `{name, excluded, reason}`; CTFd team rename,
   prize exclusion with reason. Membership updates only in draft.
