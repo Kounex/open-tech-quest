@@ -48,6 +48,10 @@ Audit transitions without credentials/flag values and invalidate native user/
 team caches. Hide staff from native public listings while granted, preserving
 their previous hidden value for revocation. Preserve all existing event data.
 
+Account demotion, safe deletion, deactivation and incarnation-bound actions are
+extended by [user-lifecycle.md](user-lifecycle.md). Its identity-token contract
+supersedes the original role-write body below.
+
 ## Shared API seam
 
 Existing `/api/v1/quest` envelope and session/CSRF rules apply.

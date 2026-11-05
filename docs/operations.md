@@ -41,6 +41,24 @@
 8. Configure SMTP before relying on password reset/email verification. It is
    an event deployment setting; no mail credentials belong in this repo.
 
+## Managing account roles and access
+
+Use **Organize → Users** to grant room access or **Return to participant** after
+an accidental promotion. Actual role changes clear attendance and unused
+provisional team membership; the account must follow the current check-in and
+roster process again. Full administrators remain managed in native CTFd.
+
+**Delete account** removes an unused participant/maintainer account after explicit
+confirmation. It is disabled for recorded competition activity and frozen team
+membership so teammates’ solves, clocks and prizes cannot be silently changed.
+Unused provisional members can be removed before optimization; captain ownership
+is repaired and team records are retained. Authored challenges remain intact.
+
+Use **Deactivate account** to revoke access while retaining competition history.
+Reactivation never creates attendance or a team assignment. These operations and
+native administration use the same lifecycle rules and invalidate outstanding
+allocation reviews; preview again when asked. See [user-lifecycle.md](user-lifecycle.md).
+
 ## Opening and closing registration
 
 Use **Organize → Event → Public registration** to open or close new account
