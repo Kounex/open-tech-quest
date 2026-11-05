@@ -231,6 +231,12 @@ function AwardRules({ data }: { data: Standings }) {
             eligibility. Genuine ties share the same rank. Published results are
             a fixed final snapshot.
           </p>
+          <p>
+            Only eligible contributions count. Banned accounts' contributions
+            are excluded, and teammates can re-solve affected challenges.
+            Unbanning restores eligibility of retained contributions without
+            counting a challenge twice.
+          </p>
         </article>
       </div>
     </section>

@@ -62,9 +62,10 @@ export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
         <div>
           <h2>Users and account access</h2>
           <p>
-            Manage participant and challenge maintainer accounts. Deactivation
-            preserves competition history; unused accounts can be deleted when
-            the server confirms they are safe to remove.
+            Manage participant and challenge maintainer accounts. Bans deny
+            access and exclude that account's contributions from team progress
+            and rankings while retaining all recorded history. Unused accounts
+            can be deleted when safe.
           </p>
         </div>
       </div>
@@ -135,7 +136,7 @@ export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
                       {user.name}
                       <small>{user.email}</small>
                       {user.banned && (
-                        <span className="user-banned">Inactive</span>
+                        <span className="user-banned">Banned</span>
                       )}
                     </th>
                     <td>{roleNames[user.role]}</td>
@@ -197,14 +198,12 @@ export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
                           <Confirm
                             key={`access-${user.identity}-${user.banned}-${user.can_set_active}`}
                             label={
-                              targetActive
-                                ? "Reactivate account"
-                                : "Deactivate account"
+                              targetActive ? "Unban account" : "Ban account"
                             }
                             description={
                               targetActive
-                                ? `Reactivate ${user.name}'s account? Access resumes under its current role. This creates no new attendance confirmation or team assignment; existing history stays saved.`
-                                : `Deactivate ${user.name}'s account? Access is blocked immediately and competition history is preserved. An unused provisional team assignment and check-in may be cleared before roster optimization. Established roster membership and historical attendance remain saved.`
+                                ? `Unban ${user.name}'s account? Access resumes under its current role. Eligible retained contributions can count again, with each challenge counted only once per team. This creates no new attendance confirmation or team assignment, and all recorded history stays saved.`
+                                : `Ban ${user.name}'s account? Access is denied, and any contributions from this account stop counting toward team progress, challenge availability and rankings. Teammates may re-solve affected challenges. All recorded history is retained. An unused provisional assignment and check-in may be cleared before optimization; established rosters remain saved.`
                             }
                             disabled={disabled || !user.can_set_active}
                             danger={!targetActive}
@@ -213,7 +212,9 @@ export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
                                 path: "/access",
                                 method: "PATCH",
                                 body: { active: targetActive },
-                                message: `${user.name}'s account ${targetActive ? "reactivated" : "deactivated"}`,
+                                message: targetActive
+                                  ? `${user.name}'s account unbanned; eligible retained contributions can count again`
+                                  : `${user.name}'s account banned; their contributions no longer count`,
                               })
                             }
                           />

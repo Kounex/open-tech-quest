@@ -217,8 +217,27 @@ export function RoomPage({
   const [starting, setStarting] = useState(false),
     [startError, setStartError] = useState(""),
     [selected, setSelected] = useState<number | null>(null),
-    [solveMessage, setSolveMessage] = useState("");
+    [solveMessage, setSolveMessage] = useState(""),
+    [progressMessage, setProgressMessage] = useState("");
+  const previousProgress = useRef<{ roomId: number; solved: number } | null>(
+    null,
+  );
   const room = resource.data;
+  useEffect(() => {
+    const next = room
+      ? { roomId: room.id, solved: room.progress.solved }
+      : null;
+    const previous = previousProgress.current;
+    if (next && previous && next.roomId === previous.roomId) {
+      if (next.solved < previous.solved) {
+        setSolveMessage("");
+        setProgressMessage(
+          "Your team's counted progress changed. Check the updated challenge path.",
+        );
+      } else if (next.solved > previous.solved) setProgressMessage("");
+    }
+    previousProgress.current = next;
+  }, [room?.id, room?.progress.solved]);
   const current = room?.steps.find((s) => s.state === "available");
   const step =
     room?.steps.find((s) => s.id === selected && s.state !== "locked") ||
@@ -226,6 +245,7 @@ export function RoomPage({
   useEffect(() => {
     setSelected(null);
     setSolveMessage("");
+    setProgressMessage("");
   }, [slug]);
   if (!room)
     return resource.error ? (
@@ -365,6 +385,7 @@ export function RoomPage({
       ) : (
         <>
           {solveMessage && <Notice tone="success">{solveMessage}</Notice>}
+          {progressMessage && <Notice>{progressMessage}</Notice>}
           <ol
             className="step-path"
             aria-label="Challenge path"
@@ -480,7 +501,7 @@ function ChallengePanel({
           : "Correct. Your team’s progress is saved.",
         incorrect: "That answer isn’t correct. Check your work and try again.",
         already_solved:
-          "Your teammate already solved this challenge. Your shared progress is up to date.",
+          "This challenge already counts as solved for your team. Your shared progress is up to date.",
         ratelimited: "Too many attempts. Wait a moment before trying again.",
         paused:
           "The event is paused. You can submit when the organizers resume it.",
@@ -566,6 +587,7 @@ function ChallengePanel({
               })}
             </div>
           )}
+          {/* The Quest projection, rather than retained native solve rows, controls the form. */}
           {step.state !== "solved" && (
             <form className="answer-form" onSubmit={submit}>
               <label htmlFor={`answer-${step.id}`}>Your answer</label>
