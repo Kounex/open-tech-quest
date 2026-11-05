@@ -294,8 +294,8 @@ class QuestIntegration(unittest.TestCase):
         response = self.post(self.admin, PREFIX + "/admin/teams/allocate", {"team_size": 3, "preview": True})
         groups = response.json["data"]["groups"]
         self.assertEqual(sorted(len(g["user_ids"]) for g in groups), [2, 2, 3])
-        self.assertEqual(self.post(self.admin, PREFIX + "/admin/teams/allocate", {"preview": False, "groups": groups[:-1]}).status_code, 409)
-        result = self.post(self.admin, PREFIX + "/admin/teams/allocate", {"preview": False, "groups": groups})
+        self.assertEqual(self.post(self.admin, PREFIX + "/admin/teams/allocate", {"preview": False, "groups": groups[:-1], "fingerprint": response.json["data"]["fingerprint"]}).status_code, 409)
+        result = self.post(self.admin, PREFIX + "/admin/teams/allocate", {"preview": False, "groups": groups, "fingerprint": response.json["data"]["fingerprint"]})
         self.assertEqual(result.status_code, 200, result.get_data(as_text=True))
         with self.app.app_context():
             self.assertEqual(Users.query.filter_by(type="user", team_id=None).count(), 0)
@@ -527,11 +527,13 @@ class QuestIntegration(unittest.TestCase):
             QuestOnboarding.query.get(1).phase = "check_in"
             db.session.add(Users(id=5, name="Waiting player", email="waiting@example.test", password="test-only"))
             db.session.commit()
+            from CTFd.plugins.open_tech_quest import onboarding
+            fingerprint = onboarding.fingerprint(locked_event())
             locked_event(lock=True)
             Users.query.get(5).team_id = self.team_id
             db.session.flush()
             with ThreadPoolExecutor(max_workers=1) as pool:
-                pending = pool.submit(lambda: self.post(self.client(1), PREFIX + "/admin/teams/allocate", {"preview": False, "groups": [{"name": "Stale proposal", "user_ids": [5]}]}))
+                pending = pool.submit(lambda: self.post(self.client(1), PREFIX + "/admin/teams/allocate", {"preview": False, "groups": [{"name": "Stale proposal", "user_ids": [5]}], "fingerprint": fingerprint}))
                 time.sleep(0.15)
                 self.assertFalse(pending.done())
                 db.session.commit()
@@ -1763,7 +1765,11 @@ class QuestIntegration(unittest.TestCase):
         self.assertEqual(self.alice.get(PREFIX+"/onboarding").json["data"]["ready_at"],timestamp)
 
     def grant_role(self, uid=2, role="maintainer"):
-        return self.post(self.admin,PREFIX+f"/admin/users/{uid}/role",{"role":role,"confirm":True},"PATCH")
+        return self.post(self.admin,PREFIX+f"/admin/users/{uid}/role",{"role":role,"confirm":True,"identity":self.account_identity(uid)},"PATCH")
+
+    def account_identity(self, uid):
+        rows = self.admin.get(PREFIX+"/admin/users").json["data"]["users"]
+        return next((row["identity"] for row in rows if row["id"] == uid),"missing")
 
     def fixture_external_chain(self, slug, ids):
         # Simulate legacy/external edits for defensive demo ownership tests.
@@ -1791,7 +1797,7 @@ class QuestIntegration(unittest.TestCase):
         self.assertEqual(self.post(self.alice,endpoint,{"role":"maintainer","confirm":True},"PATCH").status_code,403)
         self.assertEqual(self.admin.patch(endpoint,json={"role":"maintainer","confirm":True}).status_code,403)
         for body in ({"role":"admin","confirm":True},{"role":"maintainer"},{"role":"maintainer","confirm":1},{"role":"maintainer","confirm":True,"hidden":False}):
-            self.assertEqual(self.post(self.admin,endpoint,body,"PATCH").status_code,400)
+            self.assertEqual(self.post(self.admin,endpoint,dict(body,identity=self.account_identity(2)),"PATCH").status_code,400)
         self.assertEqual(self.grant_role(1).status_code,409)
         self.assertEqual(self.grant_role(999).status_code,404)
         self.assertEqual(self.grant_role().status_code,200)
@@ -1930,7 +1936,7 @@ class QuestIntegration(unittest.TestCase):
     def test_maintainer_native_staff_assignment_visibility_and_banned_permissions(self):
         self.open_onboarding()
         self.assertEqual(self.grant_role().status_code,200)
-        for body in ({"team_id":self.team_id},{"hidden":False},{"type":"admin"}):
+        for body in ({"team_id":self.team_id},{"hidden":False}):
             response = self.post(self.admin,"/api/v1/users/2",body,"PATCH")
             self.assertEqual(response.status_code,409,response.get_data(as_text=True))
         self.assertEqual(self.post(self.admin,PREFIX+f"/admin/teams/{self.team_id}",{"user_ids":[2,3]},"PATCH").status_code,400)
@@ -1984,7 +1990,8 @@ class QuestIntegration(unittest.TestCase):
             self.assertEqual([(u.id,u.name,u.type,u.team_id) for u in Users.query.order_by(Users.id).all()],before)
         self.open_onboarding()
         self.assertEqual(self.grant_role().status_code,200)
-        response = self.post(self.admin,"/api/v1/users/2",{},"DELETE")
+        self.assertEqual(self.post(self.admin,"/api/v1/users/2",{},"DELETE").status_code,409)
+        response = self.post(self.admin,PREFIX+"/admin/users/2",{"confirm":True,"identity":self.account_identity(2)},"DELETE")
         self.assertEqual(response.status_code,200,response.get_data(as_text=True))
         with self.app.app_context():
             self.assertIsNone(QuestMaintainer.query.get(2))
@@ -2064,7 +2071,7 @@ class QuestIntegration(unittest.TestCase):
             db.session.commit()
         plan = self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":True}).json["data"]
         self.assertEqual([uid for group in plan["groups"] for uid in group["user_ids"]],[5])
-        self.assertEqual(self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":False,"groups":plan["groups"]}).status_code,200)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":False,"groups":plan["groups"],"fingerprint":plan["fingerprint"]}).status_code,200)
         with self.app.app_context():
             state = QuestOnboarding.query.get(1)
             state.phase,state.grandfathered = "finalized",True
@@ -2089,6 +2096,7 @@ class QuestIntegration(unittest.TestCase):
         self.open_onboarding()
         self.attendance_window(True)
         timestamp = self.ready_user(self.carol)["ready_at"]
+        target_identity = self.account_identity(4)
         original = api_module.event
         for uid,mutation in ((5,{"type":"user"}),(6,{"banned":True})):
             with self.subTest(mutation=mutation):
@@ -2104,7 +2112,7 @@ class QuestIntegration(unittest.TestCase):
                     return original(lock=lock)
                 with patch.object(api_module,"event",side_effect=gate):
                     with ThreadPoolExecutor(max_workers=1) as pool:
-                        waiting = pool.submit(lambda:self.post(self.client(uid),PREFIX+"/admin/users/4/role",{"role":"maintainer","confirm":True},"PATCH"))
+                        waiting = pool.submit(lambda:self.post(self.client(uid),PREFIX+"/admin/users/4/role",{"role":"maintainer","confirm":True,"identity":target_identity},"PATCH"))
                         try:
                             self.assertTrue(entered.wait(3))
                             changed = self.post(self.admin,f"/api/v1/users/{uid}",mutation,"PATCH")
@@ -2121,5 +2129,720 @@ class QuestIntegration(unittest.TestCase):
                     self.assertIsNone(QuestMaintainer.query.get(4))
                     self.assertEqual(Users.query.get(4).team_id,self.other_id)
                     self.assertFalse(Users.query.get(4).hidden)
-                    self.assertEqual(QuestAudit.query.filter_by(action="user.role").count(),0)
+                    self.assertFalse(any(a.detail.get("user_id")==4 for a in QuestAudit.query.filter_by(action="user.role").all()))
                 self.assertEqual(self.carol.get(PREFIX+"/onboarding").json["data"]["ready_at"],timestamp)
+
+    def managed_account(self, uid):
+        response = self.admin.get(PREFIX+"/admin/users")
+        self.assertEqual(response.status_code,200,response.get_data(as_text=True))
+        return next(row for row in response.json["data"]["users"] if row["id"] == uid)
+
+    def account_action(self, uid, action, identity=None, **fields):
+        if identity is None:
+            identity = self.account_identity(uid)
+        data = dict(fields,identity=identity,confirm=True)
+        path = PREFIX+f"/admin/users/{uid}"+("/access" if action=="access" else "")
+        return self.post(self.admin,path,data,"PATCH" if action=="access" else "DELETE")
+
+    def test_lifecycle_controls_permissions_identity_validation_and_private_metadata(self):
+        self.open_onboarding()
+        row = self.managed_account(2)
+        self.assertIsInstance(row["identity"],str)
+        self.assertTrue(row["can_delete"])
+        self.assertTrue(row["can_set_active"])
+        self.assertIsNone(row["delete_reason"])
+        response = self.admin.get(PREFIX+"/admin/users")
+        self.assertTrue(response.cache_control.private)
+        self.assertTrue(response.cache_control.no_store)
+        admin = self.managed_account(1)
+        self.assertFalse(admin["can_delete"])
+        self.assertFalse(admin["can_set_active"])
+        for suffix,method,fields in (("","DELETE",{}),("/access","PATCH",{"active":False}),("/role","PATCH",{"role":"maintainer"})):
+            path = PREFIX+"/admin/users/2"+suffix
+            valid = dict(fields,confirm=True,identity=row["identity"])
+            self.assertEqual(self.alice.open(path,method=method,json=valid).status_code,403)
+            self.assertEqual(self.post(self.alice,path,valid,method).status_code,403)
+            self.assertEqual(self.admin.open(path,method=method,json=valid).status_code,403)
+            missing = self.post(self.admin,path,dict(fields,confirm=True),method)
+            self.assertEqual(missing.status_code,409)
+            self.assertIn("Refresh",missing.json["error"])
+            self.assertTrue(missing.cache_control.no_store)
+            for changed in ({"confirm":1},{"confirm":False},{"unknown":True}):
+                invalid = dict(valid,**changed)
+                self.assertEqual(self.post(self.admin,path,invalid,method).status_code,400)
+        for active in (1,"false",None):
+            self.assertEqual(self.post(self.admin,PREFIX+"/admin/users/2/access",{"active":active,"confirm":True,"identity":row["identity"]},"PATCH").status_code,400)
+        self.assertEqual(self.account_action(2,"access",identity="é"*64,active=False).status_code,409)
+        self.assertEqual(self.account_action(1,"access",active=False).status_code,409)
+        self.assertEqual(self.account_action(1,"delete").status_code,409)
+
+    def test_lifecycle_unused_delete_repairs_captain_cleans_credentials_and_preserves_authored_content(self):
+        from CTFd.models import ChallengeComments, Tracking, UserTokens
+        self.open_onboarding()
+        self.attendance_window(True)
+        self.ready_user(self.alice)
+        with self.app.app_context():
+            Teams.query.get(self.team_id).captain_id=2
+            db.session.add(UserTokens(user_id=2,value="disposable-delete-token"))
+            db.session.add(Tracking(user_id=2,ip="127.0.0.1"))
+            db.session.add(ChallengeComments(author_id=2,challenge_id=1,content="Preserve this authored note"))
+            db.session.add(QuestAudit(actor_id=2,action="room.configure",detail={"room_slug":"openshift"}))
+            db.session.commit()
+            before = [(c.id,c.description) for c in Challenges.query.order_by(Challenges.id).all()]
+            flags = [(f.challenge_id,f.content) for f in Flags.query.order_by(Flags.id).all()]
+        self.assertEqual(self.post(self.admin,"/api/v1/users/2",{},"DELETE").status_code,409)
+        response = self.account_action(2,"delete")
+        self.assertEqual(response.status_code,200,response.get_data(as_text=True))
+        self.assertEqual(response.json["data"],{"id":2,"deleted":True})
+        self.assertTrue(response.cache_control.no_store)
+        with self.app.app_context():
+            self.assertIsNone(Users.query.get(2))
+            self.assertIsNone(QuestReadiness.query.get(2))
+            self.assertEqual(UserTokens.query.filter_by(user_id=2).count(),0)
+            self.assertEqual(Tracking.query.filter_by(user_id=2).count(),0)
+            self.assertIsNotNone(Teams.query.get(self.team_id))
+            self.assertEqual(Teams.query.get(self.team_id).captain_id,3)
+            self.assertEqual(Users.query.get(3).team_id,self.team_id)
+            self.assertEqual([(c.id,c.description) for c in Challenges.query.order_by(Challenges.id).all()],before)
+            self.assertEqual([(f.challenge_id,f.content) for f in Flags.query.order_by(Flags.id).all()],flags)
+            self.assertIsNone(ChallengeComments.query.one().author_id)
+            self.assertEqual(ChallengeComments.query.one().content,"Preserve this authored note")
+            self.assertIsNone(QuestAudit.query.filter_by(action="room.configure",actor_id=None).first().actor_id)
+            self.assertEqual(QuestAudit.query.filter_by(action="user.delete").count(),1)
+        self.assertNotEqual(self.alice.get(PREFIX+"/bootstrap").status_code,500)
+
+    def test_lifecycle_stale_incarnation_rejects_delete_access_role_and_allocation(self):
+        self.open_onboarding()
+        with self.app.app_context():
+            db.session.add(Users(id=5,name="Replaceable",email="replaceable@example.test",password="old-password"))
+            db.session.commit()
+        old = self.managed_account(5)
+        plan = self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":True}).json["data"]
+        self.assertEqual(self.account_action(5,"delete").status_code,200)
+        with self.app.app_context():
+            db.session.add(Users(id=5,name="Replaceable",email="replaceable@example.test",password="new-password"))
+            db.session.commit()
+        new = self.managed_account(5)
+        self.assertNotEqual(new["identity"],old["identity"])
+        for response in (self.account_action(5,"delete",old["identity"]),self.account_action(5,"access",old["identity"],active=False),self.post(self.admin,PREFIX+"/admin/users/5/role",{"role":"maintainer","confirm":True,"identity":old["identity"]},"PATCH")):
+            self.assertEqual(response.status_code,409,response.get_data(as_text=True))
+        stale = self.post(self.admin,PREFIX+"/admin/teams/allocate",dict(plan,preview=False))
+        self.assertEqual(stale.status_code,409)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":False,"groups":plan["groups"]}).status_code,409)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/teams/allocate",dict(plan,preview=False,fingerprint="é"*64)).status_code,409)
+        with self.app.app_context():
+            self.assertFalse(Users.query.get(5).banned)
+            self.assertIsNone(Users.query.get(5).team_id)
+            self.assertIsNone(QuestMaintainer.query.get(5))
+        fresh = self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":True}).json["data"]
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/teams/allocate",dict(fresh,preview=False)).status_code,200)
+
+    def test_lifecycle_unused_access_demote_and_reactivate_follow_current_attendance_phase(self):
+        self.open_onboarding()
+        self.attendance_window(True)
+        self.ready_user(self.alice)
+        with self.app.app_context():
+            Teams.query.get(self.team_id).captain_id=2
+            db.session.commit()
+        self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        with self.app.app_context():
+            user = Users.query.get(2)
+            self.assertTrue(user.banned)
+            self.assertIsNone(user.team_id)
+            self.assertIsNone(QuestReadiness.query.get(2))
+            self.assertEqual(Teams.query.get(self.team_id).captain_id,3)
+            count = QuestAudit.query.filter_by(action="user.access").count()
+        self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        with self.app.app_context():
+            self.assertEqual(QuestAudit.query.filter_by(action="user.access").count(),count)
+        self.assertEqual(self.account_action(2,"access",active=True).status_code,200)
+        self.assertIsNone(self.alice.get(PREFIX+"/onboarding").json["data"]["ready_at"])
+        self.assertEqual(self.grant_role().status_code,200)
+        self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        with self.app.app_context():
+            self.assertIsNotNone(QuestMaintainer.query.get(2))
+            self.assertTrue(Users.query.get(2).hidden)
+        self.assertEqual(self.grant_role(role="participant").status_code,200)
+        self.assertEqual(self.account_action(2,"access",active=True).status_code,200)
+        self.assertTrue(self.alice.get(PREFIX+"/onboarding").json["data"]["can_ready"])
+        self.ready_user(self.alice)
+        self.assertEqual(self.grant_role().status_code,200)
+        self.assertEqual(self.grant_role(role="participant").status_code,200)
+        with self.app.app_context():
+            user=Users.query.get(2)
+            self.assertIsNone(user.team_id)
+            self.assertIsNone(QuestReadiness.query.get(2))
+            self.assertFalse(user.hidden)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        self.assertEqual(self.post(self.alice,PREFIX+"/onboarding/ready",{}).status_code,409)
+
+    def test_lifecycle_activity_delete_refusal_and_access_preserve_teammate_score_and_clocks(self):
+        self.action("start")
+        self.start(self.alice)
+        self.assertEqual(self.solve(self.bob,1).json["data"]["status"],"correct")
+        before = self.guest.get(PREFIX+"/standings").json["data"]
+        team_before = next(t for t in before["teams"] if t["id"]==self.team_id)
+        row = self.managed_account(2)
+        self.assertFalse(row["can_delete"])
+        refusal = self.account_action(2,"delete")
+        self.assertEqual(refusal.status_code,409)
+        self.assertEqual(refusal.json["error"],row["delete_reason"])
+        self.assertEqual(self.post(self.admin,"/api/v1/users/2",{},"DELETE").status_code,409)
+        with self.app.app_context():
+            starts = [(s.team_id,s.room_id,s.started_at) for s in QuestStart.query.all()]
+            ready = QuestReadiness.query.get(2).ready_at
+        self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        self.assertIn(self.solve(self.alice,2).status_code,(302,403))
+        self.assertEqual(self.solve(self.bob,2).json["data"]["status"],"correct")
+        after = self.guest.get(PREFIX+"/standings").json["data"]
+        team_after = next(t for t in after["teams"] if t["id"]==self.team_id)
+        self.assertEqual(team_before["total"],1)
+        self.assertEqual(team_after["total"],2)
+        with self.app.app_context():
+            self.assertEqual(Users.query.get(2).team_id,self.team_id)
+            self.assertEqual(QuestReadiness.query.get(2).ready_at,ready)
+            self.assertEqual([(s.team_id,s.room_id,s.started_at) for s in QuestStart.query.all()],starts)
+            self.assertEqual(Solves.query.count(),2)
+        self.assertEqual(self.account_action(2,"access",active=True).status_code,200)
+        self.assertEqual(self.alice.get(PREFIX+"/onboarding").json["data"]["ready_at"],ready.isoformat(timespec="milliseconds")+"Z")
+
+    def test_lifecycle_frozen_rosters_and_naming_history_never_hard_deleted(self):
+        row=self.managed_account(2)
+        self.assertFalse(row["can_delete"])
+        self.assertEqual(self.account_action(2,"delete").status_code,409)
+        self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        with self.app.app_context():
+            self.assertEqual(Users.query.get(2).team_id,self.team_id)
+            self.assertIsNotNone(QuestReadiness.query.get(2))
+            Users.query.get(4).team_id=None
+            QuestTeamName.query.get(self.team_id).claimed_by=4
+            db.session.commit()
+        self.assertEqual(self.account_action(4,"delete").status_code,409)
+        with self.app.app_context():
+            self.assertEqual(QuestTeamName.query.get(self.team_id).claimed_by,4)
+
+    def test_lifecycle_native_admin_type_access_safety_and_failed_validation_rollback(self):
+        self.open_onboarding()
+        self.attendance_window(True)
+        self.ready_user(self.alice)
+        for body in ({"type":"user"},{"banned":True},{"banned":"true"}):
+            response=self.post(self.admin,"/api/v1/users/1",body,"PATCH")
+            self.assertEqual(response.status_code,409,response.get_data(as_text=True))
+        self.assertEqual(self.post(self.admin,"/api/v1/users/1",{},"DELETE").status_code,409)
+        # A schema error must roll back access/readiness/captain/audit staging.
+        with self.app.app_context():
+            before_ready=QuestReadiness.query.get(2).ready_at
+        invalid=self.post(self.admin,"/api/v1/users/2",{"banned":True,"email":"invalid-email"},"PATCH")
+        self.assertEqual(invalid.status_code,400,invalid.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertFalse(Users.query.get(2).banned)
+            self.assertEqual(Users.query.get(2).team_id,self.team_id)
+            self.assertEqual(QuestReadiness.query.get(2).ready_at,before_ready)
+            self.assertEqual(QuestAudit.query.filter_by(action="user.access").count(),0)
+        self.assertEqual(self.grant_role().status_code,200)
+        invalid=self.post(self.admin,"/api/v1/users/2",{"type":"admin","email":"invalid-email"},"PATCH")
+        self.assertEqual(invalid.status_code,400,invalid.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Users.query.get(2).type,"user")
+            self.assertTrue(Users.query.get(2).hidden)
+            self.assertIsNotNone(QuestMaintainer.query.get(2))
+            role_audits=QuestAudit.query.filter_by(action="user.role").count()
+        promoted=self.post(self.admin,"/api/v1/users/2",{"type":"admin"},"PATCH")
+        self.assertEqual(promoted.status_code,200,promoted.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Users.query.get(2).type,"admin")
+            self.assertIsNone(QuestMaintainer.query.get(2))
+            self.assertFalse(Users.query.get(2).hidden)
+            self.assertIsNone(QuestReadiness.query.get(2))
+            self.assertIsNone(Users.query.get(2).team_id)
+            self.assertEqual(QuestAudit.query.filter_by(action="user.role").count(),role_audits+1)
+        demoted=self.post(self.admin,"/api/v1/users/2",{"type":"user"},"PATCH")
+        self.assertEqual(demoted.status_code,200,demoted.get_data(as_text=True))
+        self.assertTrue(self.alice.get(PREFIX+"/onboarding").json["data"]["can_ready"])
+        self.assertEqual(self.post(self.admin,"/api/v1/users/2",{"banned":"true"},"PATCH").status_code,200)
+        with self.app.app_context():
+            self.assertTrue(Users.query.get(2).banned)
+        self.assertEqual(self.post(self.admin,"/api/v1/users/2",{"banned":"false"},"PATCH").status_code,200)
+
+    def test_lifecycle_native_history_type_change_and_admin_delete_preserve_records(self):
+        self.action("start")
+        self.start()
+        self.solve(self.bob,1)
+        self.assertEqual(self.post(self.admin,"/api/v1/users/2",{"type":"admin"},"PATCH").status_code,409)
+        self.assertEqual(self.post(self.admin,"/api/v1/users/3",{},"DELETE").status_code,409)
+        with self.app.app_context():
+            db.session.add(Users(id=5,name="Unused admin",email="unused-admin@example.test",password="test-only",type="admin"))
+            db.session.add(QuestAudit(actor_id=1,action="Preserved audit",detail={"target_id":5}))
+            db.session.commit()
+        deleted=self.post(self.admin,"/api/v1/users/5",{},"DELETE")
+        self.assertEqual(deleted.status_code,200,deleted.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertIsNone(Users.query.get(5))
+            self.assertEqual(Solves.query.count(),1)
+            self.assertEqual(QuestStart.query.count(),1)
+            self.assertEqual(QuestAudit.query.filter_by(action="Preserved audit").count(),1)
+            self.assertEqual(Users.query.filter_by(type="admin",banned=False).count(),1)
+
+    def gated_lifecycle_write(self, uid, path, body, method, mutation, native=False, browser=None):
+        from CTFd.plugins.open_tech_quest import api as api_module, guards
+        from flask import request
+        module=guards if native else api_module
+        original=module.event
+        entered,release=threading.Event(),threading.Event()
+        def gate(lock=False):
+            if lock and request.path == path:
+                entered.set()
+                if not release.wait(3):
+                    raise RuntimeError("Lifecycle test gate not released")
+            return original(lock=lock)
+        with patch.object(module,"event",side_effect=gate):
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                client=browser or self.client(uid)
+                with client.session_transaction() as session:
+                    nonce=session["nonce"]
+                pending=pool.submit(lambda:client.open(path,method=method,json=body,headers={"CSRF-Token":nonce}))
+                try:
+                    self.assertTrue(entered.wait(3),path)
+                    mutation()
+                finally:
+                    release.set()
+                return pending.result()
+
+    def test_lifecycle_queued_new_account_actions_reject_revoked_or_deleted_actor(self):
+        self.open_onboarding()
+        for uid,action,mutation in ((5,"role","delete"),(6,"access","demote"),(7,"delete","ban")):
+            with self.subTest(action=action):
+                with self.app.app_context():
+                    db.session.add(Users(id=uid,name=f"Waiting admin {uid}",email=f"waiting-admin{uid}@example.test",type="admin",password="test-only"))
+                    db.session.commit()
+                fields={"role":"maintainer"} if action=="role" else ({"active":False} if action=="access" else {})
+                path=PREFIX+"/admin/users/4"+("/"+action if action!="delete" else "")
+                method="DELETE" if action=="delete" else "PATCH"
+                data=dict(fields,confirm=True,identity=self.account_identity(4))
+                def change_actor():
+                    if mutation=="delete":
+                        result=self.post(self.admin,f"/api/v1/users/{uid}",{},"DELETE")
+                    else:
+                        result=self.post(self.admin,f"/api/v1/users/{uid}",{"type":"user"} if mutation=="demote" else {"banned":True},"PATCH")
+                    self.assertEqual(result.status_code,200,result.get_data(as_text=True))
+                response=self.gated_lifecycle_write(uid,path,data,method,change_actor)
+                self.assertEqual(response.status_code,403,response.get_data(as_text=True))
+                with self.app.app_context():
+                    self.assertIsNotNone(Users.query.get(4))
+                    self.assertFalse(Users.query.get(4).banned)
+                    self.assertEqual(Users.query.get(4).team_id,self.other_id)
+                    self.assertIsNone(QuestMaintainer.query.get(4))
+                    self.assertEqual(QuestAudit.query.filter_by(action="user.delete").filter(QuestAudit.detail["user_id"].as_integer()==4).count(),0)
+
+    def test_lifecycle_queued_readiness_rechecks_deleted_or_staff_target(self):
+        self.open_onboarding()
+        self.attendance_window(True)
+        path=PREFIX+"/onboarding/ready"
+        browser=self.app.test_client()
+        browser.get("/login")
+        with browser.session_transaction() as session:
+            nonce=session["nonce"]
+        self.assertEqual(browser.post("/login",data={"nonce":nonce,"name":"Alice","password":"test-only"}).status_code,302)
+        def delete_target():
+            response=self.account_action(2,"delete")
+            self.assertEqual(response.status_code,200,response.get_data(as_text=True))
+        deleted=self.gated_lifecycle_write(2,path,{},"POST",delete_target,browser=browser)
+        self.assertEqual(deleted.status_code,401,deleted.get_data(as_text=True))
+        def promote_target():
+            self.assertEqual(self.grant_role(3).status_code,200)
+        staff=self.gated_lifecycle_write(3,path,{},"POST",promote_target)
+        self.assertEqual(staff.status_code,403,staff.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertIsNone(QuestReadiness.query.get(2))
+            self.assertIsNone(QuestReadiness.query.get(3))
+            self.assertEqual(QuestStart.query.count(),0)
+
+    def test_lifecycle_queued_start_and_attempt_recheck_deactivated_target(self):
+        self.action("start")
+        def deactivate():
+            response=self.account_action(2,"access",active=False)
+            self.assertEqual(response.status_code,200,response.get_data(as_text=True))
+        start=self.gated_lifecycle_write(2,PREFIX+"/rooms/openshift/start",{},"POST",deactivate)
+        self.assertEqual(start.status_code,403,start.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(QuestStart.query.count(),0)
+        self.assertEqual(self.account_action(2,"access",active=True).status_code,200)
+        self.start(self.bob)
+        attempt=self.gated_lifecycle_write(2,"/api/v1/challenges/attempt",{"challenge_id":1,"submission":"fixture-answer-1"},"POST",deactivate,native=True)
+        self.assertEqual(attempt.status_code,403,attempt.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Solves.query.count(),0)
+            self.assertEqual(Submissions.query.count(),0)
+            self.assertEqual(QuestStart.query.count(),1)
+        self.assertEqual(self.solve(self.bob,1).json["data"]["status"],"correct")
+
+    def test_lifecycle_optimizer_fingerprint_rejects_access_changes_and_incarnation_reuse(self):
+        self.open_onboarding()
+        self.attendance_window(True)
+        self.ready_user(self.alice)
+        self.ready_user(self.bob)
+        self.ready_user(self.carol)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        plan=self.attendance_plan()
+        self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/onboarding/optimize",{"preview":False,"fingerprint":plan["fingerprint"]}).status_code,409)
+        self.assertEqual(self.account_action(2,"access",active=True).status_code,200)
+        fresh=self.attendance_plan()
+        self.assertNotEqual(fresh["fingerprint"],plan["fingerprint"])
+        self.apply_attendance(fresh)
+
+    def test_lifecycle_sqlite_real_registration_id_reuse_invalidates_old_identity(self):
+        if not self.app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
+            self.skipTest("Native SQLite autoincrement ID reuse")
+        self.open_onboarding()
+        with self.app.app_context():
+            db.session.add(Users(id=5,name="Reused name",email="reused-native@example.test",password="old-password"))
+            db.session.commit()
+        old=self.account_identity(5)
+        self.assertEqual(self.account_action(5,"delete",old).status_code,200)
+        client=self.app.test_client()
+        self.assertEqual(client.get("/register").status_code,200)
+        with client.session_transaction() as session:
+            nonce=session["nonce"]
+        created=client.post("/register",data={"nonce":nonce,"name":"Reused name","email":"reused-native@example.test","password":"new-password"})
+        self.assertEqual(created.status_code,302,created.get_data(as_text=True))
+        with client.session_transaction() as session:
+            self.assertEqual(session["id"],5)
+        self.assertNotEqual(self.account_identity(5),old)
+        stale=self.account_action(5,"delete",old)
+        self.assertEqual(stale.status_code,409)
+        with self.app.app_context():
+            self.assertIsNotNone(Users.query.get(5))
+
+    def test_lifecycle_queued_native_account_change_rechecks_demoted_actor(self):
+        self.open_onboarding()
+        with self.app.app_context():
+            db.session.add(Users(id=5,name="Queued native admin",email="queued-native@example.test",type="admin",password="test-only"))
+            db.session.commit()
+        def demote():
+            response=self.post(self.admin,"/api/v1/users/5",{"type":"user"},"PATCH")
+            self.assertEqual(response.status_code,200,response.get_data(as_text=True))
+        response=self.gated_lifecycle_write(5,"/api/v1/users/4",{"banned":True},"PATCH",demote,native=True)
+        self.assertEqual(response.status_code,403,response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertFalse(Users.query.get(4).banned)
+            self.assertEqual(Users.query.get(4).team_id,self.other_id)
+
+    def native_login(self, name):
+        client=self.app.test_client()
+        self.assertEqual(client.get("/login").status_code,200)
+        with client.session_transaction() as session:
+            nonce=session["nonce"]
+        self.assertEqual(client.post("/login",data={"nonce":nonce,"name":name,"password":"test-only"}).status_code,302)
+        with client.session_transaction() as session:
+            self.assertIn("hash",session)
+        return client
+
+    def test_lifecycle_signed_actor_replacement_cannot_inherit_queued_administrator_access(self):
+        self.open_onboarding()
+        with self.app.app_context():
+            db.session.add(Users(id=5,name="Signed old admin",email="signed-old-admin@example.test",type="admin",password="test-only"))
+            db.session.commit()
+        browser=self.native_login("Signed old admin")
+        path=PREFIX+"/admin/users/4/access"
+        data={"active":False,"confirm":True,"identity":self.account_identity(4)}
+        def replace_actor():
+            self.assertEqual(self.post(self.admin,"/api/v1/users/5",{},"DELETE").status_code,200)
+            # Explicit same-ID fixture covers both dialects; native SQLite
+            # registration reuse is independently exercised above.
+            with self.app.app_context():
+                db.session.add(Users(id=5,name="Replacement admin",email="replacement-admin@example.test",type="admin",password="different-password"))
+                db.session.commit()
+        response=self.gated_lifecycle_write(5,path,data,"PATCH",replace_actor,browser=browser)
+        self.assertEqual(response.status_code,403,response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertFalse(Users.query.get(4).banned)
+            self.assertEqual(QuestAudit.query.filter_by(action="user.access").count(),0)
+
+    def test_lifecycle_signed_personal_writes_recheck_deleted_or_banned_account_after_waiting(self):
+        self.open_onboarding()
+        carol=self.native_login("Carol")
+        def delete_carol():
+            self.assertEqual(self.account_action(4,"delete").status_code,200)
+        deleted=self.gated_lifecycle_write(4,"/api/v1/users/me",{"name":"Deleted edit"},"PATCH",delete_carol,native=True,browser=carol)
+        self.assertEqual(deleted.status_code,401,deleted.get_data(as_text=True))
+        alice=self.native_login("Alice")
+        def ban_alice():
+            self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        banned=self.gated_lifecycle_write(2,"/api/v1/users/me",{"name":"Banned edit"},"PATCH",ban_alice,native=True,browser=alice)
+        self.assertEqual(banned.status_code,403,banned.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertIsNone(Users.query.get(4))
+            self.assertEqual(Users.query.get(2).name,"Alice")
+
+    def test_lifecycle_native_award_creation_serializes_with_unused_account_deletion(self):
+        from flask import request
+        from CTFd.models import Awards
+        from CTFd.plugins.open_tech_quest import lifecycle
+        self.open_onboarding()
+        original=lifecycle.personal_activity
+        entered,release=threading.Event(),threading.Event()
+        def gate(user):
+            result=original(user)
+            if request.method=="DELETE" and request.path==PREFIX+"/admin/users/2":
+                entered.set()
+                if not release.wait(3):
+                    raise RuntimeError("Deletion activity gate not released")
+            return result
+        identity=self.account_identity(2)
+        with patch.object(lifecycle,"personal_activity",side_effect=gate):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                deleting=pool.submit(lambda:self.post(self.client(1),PREFIX+"/admin/users/2",{"confirm":True,"identity":identity},"DELETE"))
+                self.assertTrue(entered.wait(3))
+                awarding=pool.submit(lambda:self.post(self.client(1),"/api/v1/awards",{"name":"Concurrent award","value":10,"user_id":2,"team_id":self.team_id}))
+                time.sleep(.1)
+                try:
+                    self.assertFalse(awarding.done(),"Native awards must wait for the account deletion transaction")
+                finally:
+                    release.set()
+                deleted,award=deleting.result(),awarding.result()
+        self.assertEqual(deleted.status_code,200,deleted.get_data(as_text=True))
+        self.assertEqual(award.status_code,404,award.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Awards.query.count(),0)
+            self.assertIsNone(Users.query.get(2))
+
+    def test_lifecycle_existing_admin_team_write_rechecks_demoted_and_replaced_actor(self):
+        self.open_onboarding()
+        for uid,replace in ((5,False),(6,True)):
+            with self.subTest(replace=replace):
+                with self.app.app_context():
+                    db.session.add(Users(id=uid,name=f"Team editor {uid}",email=f"team-editor{uid}@example.test",type="admin",password="test-only"))
+                    db.session.commit()
+                browser=self.native_login(f"Team editor {uid}")
+                def revoke():
+                    if replace:
+                        self.assertEqual(self.post(self.admin,f"/api/v1/users/{uid}",{},"DELETE").status_code,200)
+                        with self.app.app_context():
+                            db.session.add(Users(id=uid,name=f"New editor {uid}",email=f"new-editor{uid}@example.test",type="admin",password="new-password"))
+                            db.session.commit()
+                    else:
+                        self.assertEqual(self.post(self.admin,f"/api/v1/users/{uid}",{"type":"user"},"PATCH").status_code,200)
+                response=self.gated_lifecycle_write(uid,PREFIX+f"/admin/teams/{self.team_id}",{"name":"Unauthorized queued rename"},"PATCH",revoke,browser=browser)
+                self.assertEqual(response.status_code,403,response.get_data(as_text=True))
+                with self.app.app_context():
+                    self.assertEqual(Teams.query.get(self.team_id).name,"Red team")
+                    self.assertEqual(QuestAudit.query.filter_by(action="team.configure").count(),0)
+
+    def test_lifecycle_ban_excludes_own_contributions_teammates_recover_and_unban_deduplicates(self):
+        from CTFd.plugins.open_tech_quest.recovery_models import QuestRecoverySolve
+        self.action("start")
+        self.start(self.alice)
+        self.assertEqual(self.solve(self.alice,1).json["data"]["status"],"correct")
+        self.assertEqual(self.solve(self.bob,2).json["data"]["status"],"correct")
+        def standing():
+            payload=self.guest.get(PREFIX+"/standings").json["data"]
+            return next(t for t in payload["teams"] if t["id"]==self.team_id)
+        before=standing()
+        with self.app.app_context():
+            native=[(s.id,s.user_id,s.team_id,s.challenge_id,s.date,s.provided) for s in Solves.query.order_by(Solves.id).all()]
+            starts=[(s.team_id,s.room_id,s.started_at) for s in QuestStart.query.all()]
+        self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        without_alice=standing()
+        self.assertEqual(without_alice["total"],1)
+        self.assertEqual(without_alice["room_progress"][0]["solved"],0)
+        recovered=self.solve(self.bob,1)
+        self.assertEqual(recovered.json["data"]["status"],"correct",recovered.get_data(as_text=True))
+        self.assertEqual(standing()["total"],2)
+        self.assertEqual(standing()["room_progress"][0]["solved"],2)
+        with self.app.app_context():
+            self.assertEqual(QuestRecoverySolve.query.count(),1)
+        self.assertEqual(self.account_action(2,"access",active=True).status_code,200)
+        restored=standing()
+        self.assertEqual(restored["total"],2)
+        self.assertEqual(restored["overall_elapsed_ms"],before["overall_elapsed_ms"])
+        self.assertEqual(restored["room_progress"][0]["milestone_elapsed_ms"],before["room_progress"][0]["milestone_elapsed_ms"])
+        self.assertEqual(self.account_action(3,"access",active=False).status_code,200)
+        self.assertEqual(standing()["total"],1)
+        self.assertEqual(standing()["room_progress"][0]["solved"],1)
+        self.assertEqual(self.solve(self.alice,2).json["data"]["status"],"correct")
+        with self.app.app_context():
+            self.assertEqual(QuestRecoverySolve.query.count(),2)
+            self.assertEqual([(s.id,s.user_id,s.team_id,s.challenge_id,s.date,s.provided) for s in Solves.query.order_by(Solves.id).all()],native)
+            self.assertEqual([(s.team_id,s.room_id,s.started_at) for s in QuestStart.query.all()],starts)
+            self.assertEqual(Users.query.get(2).team_id,self.team_id)
+            self.assertEqual(Users.query.get(3).team_id,self.team_id)
+
+    def test_lifecycle_published_solve_contributor_ban_unban_requires_unpublish(self):
+        self.action("start")
+        self.start()
+        self.solve(self.alice,1)
+        self.action("close")
+        self.action("publish")
+        snapshot=self.guest.get(PREFIX+"/standings").json["data"]["teams"]
+        row=self.managed_account(2)
+        self.assertFalse(row["can_set_active"])
+        self.assertIn("Unpublish",row["access_reason"])
+        rejected=self.account_action(2,"access",active=False)
+        self.assertEqual(rejected.status_code,409)
+        self.assertEqual(rejected.json["error"],row["access_reason"])
+        self.assertEqual(self.post(self.admin,"/api/v1/users/2",{"banned":True},"PATCH").status_code,409)
+        self.assertEqual(self.account_action(2,"access",active=True).status_code,200)
+        self.assertEqual(self.guest.get(PREFIX+"/standings").json["data"]["teams"],snapshot)
+        self.action("unpublish",reason="Review contribution eligibility")
+        self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        self.action("publish")
+        self.assertEqual(self.account_action(2,"access",active=True).status_code,409)
+        self.action("unpublish",reason="Restore eligibility")
+        self.assertEqual(self.account_action(2,"access",active=True).status_code,200)
+        with self.app.app_context():
+            self.assertEqual(Solves.query.count(),1)
+
+    def test_lifecycle_solved_solution_uses_eligible_contributions_after_ban_and_recovery(self):
+        from CTFd.models import Solutions
+        with self.app.app_context():
+            solution=Solutions(challenge_id=1,content="Traceable solved-only solution",state="solved")
+            db.session.add(solution)
+            db.session.commit()
+            sid=solution.id
+        self.action("start")
+        self.start()
+        self.solve(self.alice,1)
+        unlocked=self.post(self.bob,"/api/v1/unlocks",{"type":"solutions","target":sid})
+        self.assertEqual(unlocked.status_code,200,unlocked.get_data(as_text=True))
+        self.assertEqual(self.bob.get(f"/api/v1/solutions/{sid}").status_code,200)
+        self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        self.assertEqual(self.bob.get(f"/api/v1/solutions/{sid}").status_code,403)
+        self.assertEqual(self.post(self.bob,"/api/v1/unlocks",{"type":"solutions","target":sid}).status_code,403)
+        self.assertEqual(self.solve(self.bob,1).json["data"]["status"],"correct")
+        self.assertEqual(self.bob.get(f"/api/v1/solutions/{sid}").status_code,200)
+
+    def test_lifecycle_published_recovery_only_contributor_cannot_be_banned(self):
+        self.action("start")
+        self.start()
+        self.solve(self.alice,1)
+        self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        self.assertEqual(self.solve(self.bob,1).json["data"]["status"],"correct")
+        with self.app.app_context():
+            self.assertEqual(Solves.query.filter_by(user_id=3).count(),0)
+        self.action("close")
+        self.action("publish")
+        self.assertFalse(self.managed_account(3)["can_set_active"])
+        self.assertEqual(self.account_action(3,"access",active=False).status_code,409)
+        self.assertEqual(self.post(self.admin,"/api/v1/users/3",{"banned":True},"PATCH").status_code,409)
+
+    def timing_fixture(self, blue_last=65, recovery_at=None, banned_alice=False):
+        from CTFd.plugins.open_tech_quest.recovery_models import QuestRecoverySolve
+        with self.app.app_context():
+            base=(datetime.utcnow()-timedelta(minutes=5)).replace(microsecond=123456)
+            e=QuestEvent.query.get(1)
+            e.status,e.start_at="live",base
+            rid=QuestRoom.query.filter_by(slug="openshift").one().id
+            for tid in (self.team_id,self.other_id):
+                db.session.add(QuestStart(team_id=tid,room_id=rid,started_at=base+timedelta(seconds=10)))
+            db.session.add(QuestPause(started_at=base+timedelta(seconds=30),ended_at=base+timedelta(seconds=40)))
+            original=Solves(challenge_id=1,user_id=2,team_id=self.team_id,date=base+timedelta(seconds=20))
+            db.session.add_all([original,Solves(challenge_id=2,user_id=3,team_id=self.team_id,date=base+timedelta(seconds=50)),Solves(challenge_id=1,user_id=4,team_id=self.other_id,date=base+timedelta(seconds=20)),Solves(challenge_id=2,user_id=4,team_id=self.other_id,date=base+timedelta(seconds=blue_last))])
+            Users.query.get(2).banned=banned_alice
+            db.session.flush()
+            original_id=original.id
+            if recovery_at is not None:
+                at=base+timedelta(seconds=recovery_at)
+                db.session.add(QuestRecoverySolve(user_id=3,credited_user_id=3,team_id=self.team_id,challenge_id=1,original_solve_id=original_id,date=at,credited_at=at))
+            db.session.commit()
+        return base,rid,original_id
+
+    def timing_standings(self):
+        response=self.guest.get(PREFIX+"/standings")
+        self.assertEqual(response.status_code,200,response.get_data(as_text=True))
+        return {row["id"]:row for row in response.json["data"]["teams"]}
+
+    def test_lifecycle_rank_count_prefix_and_new_milestone_time_after_ban_recovery_unban(self):
+        from CTFd.plugins.open_tech_quest.recovery_models import QuestRecoverySolve
+        base,rid,original_id=self.timing_fixture()
+        initial=self.timing_standings()
+        self.assertEqual(initial[self.team_id]["rank"],1)
+        self.assertEqual(initial[self.team_id]["overall_elapsed_ms"],40000)
+        self.assertEqual(initial[self.team_id]["room_progress"][0]["milestone_elapsed_ms"],30000)
+        self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        banned=self.timing_standings()
+        self.assertEqual(banned[self.team_id]["total"],1)
+        self.assertEqual(banned[self.team_id]["overall_elapsed_ms"],40000)
+        self.assertEqual(banned[self.team_id]["rank"],2)  # Count wins despite the earlier remaining milestone.
+        self.assertEqual(banned[self.team_id]["room_progress"][0]["solved"],0)
+        self.assertIsNone(banned[self.team_id]["room_progress"][0]["milestone_elapsed_ms"])
+        with self.app.app_context():
+            at=base+timedelta(seconds=70)
+            db.session.add(QuestRecoverySolve(user_id=3,credited_user_id=3,team_id=self.team_id,challenge_id=1,original_solve_id=original_id,date=at,credited_at=at))
+            db.session.commit()
+        recovered=self.timing_standings()
+        self.assertEqual(recovered[self.team_id]["total"],2)
+        self.assertEqual(recovered[self.team_id]["overall_elapsed_ms"],60000)
+        self.assertEqual(recovered[self.team_id]["room_progress"][0]["milestone_elapsed_ms"],50000)
+        self.assertEqual(recovered[self.team_id]["room_progress"][0]["solved"],2)
+        self.assertEqual(recovered[self.team_id]["rank"],2)
+        self.assertEqual(recovered[self.team_id]["room_progress"][0]["rank"],2)
+        self.assertEqual(self.account_action(2,"access",active=True).status_code,200)
+        restored=self.timing_standings()
+        self.assertEqual(restored[self.team_id]["total"],2)
+        self.assertEqual(restored[self.team_id]["overall_elapsed_ms"],40000)
+        self.assertEqual(restored[self.team_id]["room_progress"][0]["milestone_elapsed_ms"],30000)
+        self.assertEqual(restored[self.team_id]["rank"],1)
+        self.assertEqual(self.account_action(3,"access",active=False).status_code,200)
+        lost_last=self.timing_standings()[self.team_id]
+        self.assertEqual(lost_last["total"],1)
+        self.assertEqual(lost_last["overall_elapsed_ms"],20000)
+        self.assertEqual(lost_last["room_progress"][0]["milestone_elapsed_ms"],10000)
+        with self.app.app_context():
+            self.assertEqual(Solves.query.count(),4)
+            self.assertEqual(QuestRecoverySolve.query.count(),1)
+            self.assertEqual(QuestStart.query.filter_by(team_id=self.team_id,room_id=rid).one().started_at,base+timedelta(seconds=10))
+
+    def test_lifecycle_recovery_ties_clock_origins_pause_exclusion_and_cutoff(self):
+        base,rid,_=self.timing_fixture(blue_last=60,recovery_at=60,banned_alice=True)
+        tied=self.timing_standings()
+        for tid in (self.team_id,self.other_id):
+            self.assertEqual(tied[tid]["total"],2)
+            self.assertEqual(tied[tid]["rank"],1)
+            self.assertEqual(tied[tid]["overall_elapsed_ms"],50000)
+            self.assertEqual(tied[tid]["room_progress"][0]["rank"],1)
+            self.assertEqual(tied[tid]["room_progress"][0]["milestone_elapsed_ms"],40000)
+        with self.app.app_context():
+            e=QuestEvent.query.get(1)
+            e.room_clock,e.overall_clock="event","team"
+            db.session.commit()
+        alternate=self.timing_standings()
+        for tid in (self.team_id,self.other_id):
+            self.assertEqual(alternate[tid]["overall_elapsed_ms"],40000)
+            self.assertEqual(alternate[tid]["room_progress"][0]["milestone_elapsed_ms"],50000)
+            self.assertEqual(alternate[tid]["rank"],1)
+        with self.app.app_context():
+            e=QuestEvent.query.get(1)
+            e.end_at=base+timedelta(seconds=55)
+            db.session.commit()
+        cutoff=self.timing_standings()
+        self.assertEqual(cutoff[self.team_id]["total"],1)
+        self.assertEqual(cutoff[self.team_id]["room_progress"][0]["solved"],0)
+        self.assertEqual(cutoff[self.other_id]["room_progress"][0]["solved"],1)
+        self.assertEqual(cutoff[self.team_id]["rank"],2)
+        with self.app.app_context():
+            QuestEvent.query.get(1).end_at=None
+            db.session.add(QuestPause(started_at=base+timedelta(seconds=58),ended_at=base+timedelta(seconds=62)))
+            db.session.commit()
+        paused=self.timing_standings()
+        self.assertEqual(paused[self.team_id]["total"],1)
+        self.assertEqual(paused[self.team_id]["room_progress"][0]["solved"],0)
+        self.assertEqual(paused[self.other_id]["total"],1)
+
+    def test_lifecycle_normal_native_solve_precision_never_predates_room_start(self):
+        from sqlalchemy import inspect
+        self.action("start")
+        self.start()
+        self.assertEqual(self.solve(self.alice,1).json["data"]["status"],"correct")
+        with self.app.app_context():
+            at=Solves.query.one().date
+            start=QuestStart.query.filter_by(team_id=self.team_id).one().started_at
+            print("Native timing precision:",db.engine.dialect.name,"start="+start.isoformat(),"solve="+at.isoformat(),"same_second="+str(start.replace(microsecond=0)==at.replace(microsecond=0)))
+            self.assertGreaterEqual(at,start)
+            self.assertEqual(Solves.query.one().user_id,2)
+            if db.engine.dialect.name=="mysql":
+                column=next(c for c in inspect(db.engine).get_columns("submissions") if c["name"]=="date")
+                self.assertEqual(column["type"].fsp,6)
+        row=self.timing_standings()[self.team_id]
+        self.assertEqual(row["total"],1)
+        self.assertEqual(row["room_progress"][0]["milestone_elapsed_ms"],round((at-start).total_seconds()*1000))

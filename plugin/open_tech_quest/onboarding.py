@@ -191,11 +191,12 @@ def activity_teams():
 
 def fingerprint(e):
     from .models import QuestMaintainer
+    from .lifecycle import identity
     state = settings()
     locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
     payload = {"phase": state.phase, "team_size": state.team_size,
                "attendance": [bool(state.attendance_open), state.attendance_generation], "event": [e.status, e.name, iso(e.start_at), iso(e.end_at), iso(e.rosters_release_at), e.room_clock, e.overall_clock],
-               "users": [(u.id, u.name, u.type, u.banned, u.team_id) for u in Users.query.order_by(Users.id).all()],
+               "users": [(u.id, identity(u), u.name, u.type, u.banned, u.team_id) for u in Users.query.order_by(Users.id).all()],
                "ready": [(r.user_id, iso(r.ready_at), r.late) for r in QuestReadiness.query.order_by(QuestReadiness.user_id).all()],
                "teams": [(t.id, t.name, t.banned, t.hidden, t.id in locked) for t in Teams.query.order_by(Teams.id).all()],
                "activity": sorted(activity_teams()),

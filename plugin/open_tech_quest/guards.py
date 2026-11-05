@@ -1,13 +1,14 @@
 """Guard native content paths as well as the SPA; known URLs grant no access."""
 import re
-from flask import abort, jsonify, redirect, request
-from CTFd.models import Challenges, Configs, Files, Hints, Solutions, Submissions, Teams, Users
+from flask import abort, g, jsonify, redirect, request, session
+from CTFd.models import Challenges, Configs, Files, Hints, Solutions, Submissions, Teams, Users, db
 from CTFd.utils.dates import ctftime
-from CTFd.utils.user import get_current_user, is_admin
+from CTFd.utils.user import is_admin
 from CTFd.utils.security.signing import unserialize, BadSignature, BadTimeSignature, SignatureExpired
 from .models import QuestStep, QuestStart
 from .service import event, now, released, solve_map
-from . import onboarding, registration, roles
+from . import onboarding, registration, lifecycle
+from .lifecycle import current_user as get_current_user
 
 
 def denied(message, status=403):
@@ -29,7 +30,15 @@ def install_guards(app):
     def quest_access():
         path = request.path.rstrip("/") or "/"
         write = request.method not in ("GET", "HEAD", "OPTIONS")
+        requested_uid = session.get("id")
+        # Safely expire a deleted or replaced signed session before native
+        # get_current_user can dereference a missing account's password.
+        get_current_user()
         administrator = is_admin()
+        if administrator:
+            # Apply the same post-lock session check to guarded native admin
+            # writes, including team and submission mutations.
+            g.quest_administrator = True
         data = request.get_json(silent=True) if request.is_json else request.form
         data = data if isinstance(data, dict) or hasattr(data, "get") else {}
         if path == "/":
@@ -48,6 +57,55 @@ def install_guards(app):
         elif write and (path == "/settings" or path.startswith("/api/v1/users")):
             # Native account handling remains responsible for credentials.
             event(lock=True)
+            actor = get_current_user()
+            if requested_uid is not None and (actor is None or actor.banned):
+                return denied("This account is unavailable. Sign in again if your account is active.", 403 if actor else 401)
+            native_target = re.fullmatch(r"/api/v1/users/(\d+)", path)
+            if native_target or path == "/api/v1/users":
+                if not lifecycle.administrator():
+                    return denied("Administrator access required", 403)
+                administrator = True
+            if native_target:
+                target = Users.query.populate_existing().filter_by(id=int(native_target[1])).first()
+                if target:
+                    e = event()
+                    if request.method == "DELETE":
+                        if target.type != "admin":
+                            return denied("Delete unused accounts through the identity-bound Open Tech Quest Users control. Deactivate accounts with history.", 409)
+                        blocked = lifecycle.delete_reason(target, e, native=True)
+                        if blocked:
+                            return denied(blocked, 409)
+                        if not target.banned and lifecycle.usable_admins() <= 1:
+                            return denied("Keep at least one usable administrator account.", 409)
+                        uid = target.id
+                        tid = lifecycle.safe_delete(target, "native")
+                        db.session.commit()
+                        lifecycle.invalidate(uid, tid)
+                        response = jsonify(success=True, data={"id": uid, "deleted": True})
+                        response.headers["Cache-Control"] = "private, no-store"
+                        return response
+                    if request.method == "PATCH":
+                        # Native validation may reject another field later;
+                        # ensure staged cleanup is rolled back on every 4xx.
+                        g.quest_native_account = (target.id, target.team_id)
+                        blocked = lifecycle.native_change(target, data, e)
+                        if blocked:
+                            db.session.rollback()
+                            return denied(blocked, 409)
+        elif write and (path.startswith("/api/v1/awards") or path == "/api/v1/unlocks"
+                        or re.fullmatch(r"/api/v1/challenges/\d+/ratings", path)):
+            # Account removal must not cascade away activity inserted after its
+            # history check. Serialize native activity writers with that check.
+            event(lock=True)
+            actor = get_current_user()
+            if actor is None or actor.banned:
+                return denied("An active account is required", 403 if actor else 401)
+            if path.startswith("/api/v1/awards"):
+                if not lifecycle.administrator():
+                    return denied("Administrator access required", 403)
+                uid = data.get("user_id")
+                if uid is not None and str(uid).isdigit() and Users.query.filter_by(id=int(uid)).first() is None:
+                    return denied("User not found", 404)
         if path in ("/teams/new", "/teams/join", "/teams/invite"):
             return denied("Team allocation and naming are managed through Open Tech Quest")
         if path == "/team":
@@ -86,18 +144,11 @@ def install_guards(app):
                 if not moderation or e.status != "draft" or onboarding.settings().phase not in ("check_in", "closed"):
                     return denied("Use Open Tech Quest team controls for capacity, roster and reasoned name changes", 409)
             user_match = re.fullmatch(r"/api/v1/users/(\d+)", path)
-            if write and user_match:
-                target = Users.query.get(int(user_match[1]))
-                if target and roles.is_maintainer(target):
-                    if (("team_id" in data and data["team_id"] is not None)
-                            or ("hidden" in data and data["hidden"] is not True)
-                            or ("type" in data and data["type"] != target.type)):
-                        return denied("Revoke maintainer access through Open Tech Quest before changing staff participation or visibility", 409)
             if write and user_match and "type" in data:
                 target = Users.query.get(int(user_match[1]))
                 if target and target.team_id and data["type"] != target.type and onboarding.settings().phase in ("naming", "finalized"):
                     return denied("An assigned participant's account role is frozen after optimization; unassign while rosters are editable first", 409)
-            if write and path.startswith("/api/v1/users/") and ("team_id" in data or request.method == "DELETE"):
+            if write and path.startswith("/api/v1/users/") and "team_id" in data:
                 e = event()
                 if e.status != "draft" or onboarding.settings().phase not in ("check_in", "closed"):
                     return denied("Team membership and identity are frozen after attendance optimization", 409)
@@ -124,6 +175,7 @@ def install_guards(app):
             return denied("Use the Open Tech Quest room board")
         challenge_id = None
         token_user = None
+        protected_solution = None
         attempt = path == "/api/v1/challenges/attempt"
         if attempt:
             challenge_id = data.get("challenge_id")
@@ -138,16 +190,19 @@ def install_guards(app):
         elif path.startswith("/api/v1/solutions/"):
             match = re.fullmatch(r"/api/v1/solutions/(\d+)", path)
             solution = Solutions.query.get(int(match[1])) if match else None
+            protected_solution = solution
             challenge_id = solution.challenge_id if solution else None
         elif path == "/api/v1/unlocks" and write:
             model = {"hints": Hints, "solutions": Solutions}.get(data.get("type"))
             target = model.query.get(data.get("target")) if model and str(data.get("target", "")).isdigit() else None
             challenge_id = target.challenge_id if target else None
+            protected_solution = target if model is Solutions else None
         elif path.startswith("/files/"):
             file = Files.query.filter_by(location=path[len("/files/"):]).first()
             challenge_id = getattr(file, "challenge_id", None)
             if file and file.type == "solution":
                 solution = Solutions.query.get(file.solution_id)
+                protected_solution = solution
                 challenge_id = solution.challenge_id if solution else None
             if file and challenge_id and request.args.get("token"):
                 try:
@@ -170,6 +225,7 @@ def install_guards(app):
             challenge_id = int(challenge_id)
         except (ValueError, TypeError, OverflowError):
             return denied("Invalid challenge ID", 400)
+        e = event(lock=write)
         step = QuestStep.query.filter_by(challenge_id=challenge_id).first()
         if step is None:
             # Unmapped challenges stay in native authoring, never in the event.
@@ -181,7 +237,6 @@ def install_guards(app):
             return denied("Only eligible participants may access native challenge attempts, hints or unlocks")
         if not user.team_id:
             return denied("An organizer must assign you to a team")
-        e = event(lock=attempt)
         if e.status == "draft" or not e.start_at or now() < e.start_at or not released(e):
             return denied("The event has not opened")
         if attempt and e.status == "paused":
@@ -199,3 +254,19 @@ def install_guards(app):
         solved = set(solve_map(e).get(user.team_id, {}))
         if not solved >= prerequisites:
             return denied("Solve the previous steps before opening this challenge")
+        if protected_solution and protected_solution.state == "solved" and challenge_id not in solved:
+            return denied("Solve this challenge with an eligible team member before opening its solution")
+        if attempt:
+            from .recovery import prepare_attempt
+            return prepare_attempt(user, challenge, e, solved)
+
+    @app.after_request
+    def native_account_result(response):
+        staged = getattr(g, "quest_native_account", None)
+        if staged:
+            response.headers["Cache-Control"] = "private, no-store"
+            if response.status_code >= 400:
+                db.session.rollback()
+            else:
+                lifecycle.invalidate(*staged)
+        return response

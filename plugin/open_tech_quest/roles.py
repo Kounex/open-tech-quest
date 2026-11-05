@@ -1,9 +1,8 @@
 """Fresh database-backed staff authorization; native CTFd admins stay native."""
 from functools import wraps
 from flask import jsonify
-from CTFd.models import Awards, Ratings, Submissions, Unlocks, Users
-from CTFd.utils.user import get_current_user
-from .models import QuestMaintainer, QuestStart
+from .lifecycle import current_user as get_current_user
+from .models import QuestMaintainer
 
 
 def is_maintainer(user=None):
@@ -41,14 +40,5 @@ def promotion_reason(user, e):
         return "Native administrators are managed through CTFd."
     if is_maintainer(user):
         return None
-    if any(model.query.filter_by(user_id=user.id).first() for model in (Submissions, Awards, Unlocks, Ratings)):
-        return "This account has competition activity and cannot become a maintainer."
-    if user.team_id:
-        if (QuestStart.query.filter_by(team_id=user.team_id).first()
-                or any(model.query.filter_by(team_id=user.team_id).first() for model in (Submissions, Awards, Unlocks))
-                or Ratings.query.join(Users, Ratings.user_id == Users.id).filter(Users.team_id == user.team_id).first()):
-            return "This account's team has competition activity and cannot become staff."
-        from .onboarding import settings
-        if e.status != "draft" or settings().phase not in ("check_in", "closed"):
-            return "Unassign this account before roster optimization to grant maintainer access."
-    return None
+    from .lifecycle import participation_reason
+    return participation_reason(user, e)

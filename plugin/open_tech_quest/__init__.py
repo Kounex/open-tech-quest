@@ -7,6 +7,7 @@ from CTFd.plugins import (register_admin_plugin_menu_bar, register_plugin_styles
 from CTFd.plugins.migrations import upgrade
 from CTFd.utils import get_config, set_config
 from .models import QuestEvent, QuestRoom
+from .recovery_models import QuestRecoverySolve
 
 
 def load(app):
@@ -44,6 +45,8 @@ def load(app):
     from .authoring import authoring_api
     app.register_blueprint(authoring_api, url_prefix="/api/v1/quest")
     install_guards(app)
+    from .recovery import install_recovery
+    install_recovery(app)
     register_plugin_stylesheet("/plugins/open_tech_quest/assets/app/native-auth.css")
     register_plugin_script("/plugins/open_tech_quest/assets/app/native-brand.js")
     register_admin_plugin_script("/plugins/open_tech_quest/assets/app/native-brand.js")

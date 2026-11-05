@@ -41,7 +41,17 @@ def event(lock=False):
             from sqlalchemy import text
             db.session.execute(text("BEGIN IMMEDIATE"))
     query = QuestEvent.query.filter_by(id=1)
-    return query.populate_existing().with_for_update().one() if lock else query.one()
+    result = query.populate_existing().with_for_update().one() if lock else query.one()
+    if lock:
+        from flask import abort, g, has_request_context, request
+        if has_request_context() and getattr(g, "quest_administrator", False):
+            from .lifecycle import administrator
+            if not administrator():
+                if request.blueprint in ("quest_api", "quest_authoring"):
+                    from .api import fail
+                    fail("Administrator access required", 403)
+                abort(403, description="Administrator access required")
+    return result
 
 
 def event_data(e=None):
@@ -90,9 +100,14 @@ class Projection:
         e = self.event
         # Imported, pre-start, paused, unmapped and after-cutoff solves do not
         # qualify. Never rewrite the native source timestamps to correct time.
-        query = Solves.query.with_entities(Solves.team_id, Solves.challenge_id, Solves.date).filter(Solves.team_id.isnot(None), Solves.challenge_id.in_(list(self.mapped)),
-                    ~Solves.user_id.in_(QuestMaintainer.query.with_entities(QuestMaintainer.user_id)))
-        for team_id, challenge_id, at in query.all():
+        from .recovery_models import QuestRecoverySolve
+        contributions = []
+        for model, timestamp in ((Solves, Solves.date), (QuestRecoverySolve, QuestRecoverySolve.credited_at)):
+            contributions.extend(model.query.with_entities(model.team_id, model.challenge_id, timestamp)
+                                 .join(Users, Users.id == model.user_id)
+                                 .filter(Users.type == "user", Users.banned.is_(False), model.team_id.isnot(None), model.challenge_id.in_(list(self.mapped)),
+                                         ~model.user_id.in_(QuestMaintainer.query.with_entities(QuestMaintainer.user_id))).all())
+        for team_id, challenge_id, at in contributions:
             room_id = self.mapped[challenge_id]
             start = self.starts.get((team_id, room_id))
             if not start or not at or at > self.at or at < max(start, e.start_at) or (e.end_at and at > e.end_at):

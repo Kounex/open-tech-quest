@@ -7,7 +7,7 @@ import math
 from datetime import timezone
 from functools import wraps
 from urllib.parse import urlsplit
-from flask import Blueprint, Response, jsonify, request, session
+from flask import Blueprint, Response, g, jsonify, request, session
 from werkzeug.exceptions import HTTPException
 from sqlalchemy.exc import IntegrityError
 from CTFd.cache import cache, clear_challenges, clear_standings, clear_user_session, clear_team_session
@@ -20,7 +20,7 @@ from .models import (QuestEvent, QuestRoom, QuestStep, QuestStart, QuestPause,
 from .service import (event, event_data, now, iso, parse_time, released,
                       room_data, room_steps, standings, Projection)
 
-from . import demo, onboarding, registration, roles
+from . import demo, onboarding, registration, roles, lifecycle
 from .models import QuestMaintainer
 
 api = Blueprint("quest_api", __name__)
@@ -121,10 +121,12 @@ def audit(action, detail):
 def admin(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        if not get_current_user():
+        actor = lifecycle.current_user()
+        if not actor:
             fail("Sign in as an administrator", 401)
-        if not is_admin() or get_current_user().banned:
+        if actor.type != "admin" or actor.banned:
             fail("Administrator access required", 403)
+        g.quest_administrator = True
         return fn(*args, **kwargs)
     return wrapper
 
@@ -195,7 +197,7 @@ def room_view(slug):
 @api.route("/rooms/<slug>/start", methods=["POST"])
 def start_room(slug):
     e = event(lock=True)
-    user = get_current_user()
+    user = lifecycle.current_user()
     if not user:
         fail("Sign in to start a room", 401)
     if not onboarding.eligible(user):
@@ -452,12 +454,13 @@ def allocate():
         fail("Initial allocation is available only while check-in is open", 409)
     preview = boolean(data.get("preview", True), "preview")
     users = eligible_users()
+    fingerprint = onboarding.fingerprint(e)
     size = state.team_size
     if "team_size" in data and integer(data["team_size"], "Team size", 1, 50) != size:
         fail("Save the maximum team size in onboarding settings before previewing allocation", 409)
     if preview:
         if not users:
-            return success({"groups": []})
+            return success({"groups": [], "fingerprint": fingerprint})
         secrets.SystemRandom().shuffle(users)
         count = (len(users) + size - 1) // size
         groups, names = [], {t.name.casefold() for t in Teams.query.all()}
@@ -468,7 +471,10 @@ def allocate():
             name = f"Team {next_number:02}"
             names.add(name.casefold())
             groups.append({"name": name, "user_ids": [u.id for u in users[index::count]]})
-        return success({"groups": groups})
+        return success({"groups": groups, "fingerprint": fingerprint})
+    supplied = data.get("fingerprint")
+    if not isinstance(supplied, str) or re.fullmatch(r"[0-9a-f]{64}", supplied) is None or not __import__("hmac").compare_digest(supplied, fingerprint):
+        fail("Accounts or settings changed, or your preview is outdated. Preview allocation again before applying it.", 409)
     groups = data.get("groups")
     if not isinstance(groups, list) or not groups:
         fail("Preview allocation and supply its groups")
@@ -638,7 +644,7 @@ def manage_demo():
 
 
 def participant_account():
-    user = get_current_user()
+    user = lifecycle.current_user()
     if user is None:
         fail("Sign in to join the onboarding process", 401)
     if not onboarding.eligible(user):
@@ -904,10 +910,37 @@ def managed_user(user, e):
     blocked = roles.promotion_reason(user, e)
     team = Teams.query.get(user.team_id) if user.team_id else None
     ready = QuestReadiness.query.get(user.id)
-    return {"id": user.id, "name": user.name, "email": user.email, "role": roles.role(user),
+    deletion = lifecycle.delete_reason(user, e)
+    access = lifecycle.access_reason(user, e)
+    return {"id": user.id, "identity": lifecycle.identity(user), "name": user.name, "email": user.email, "role": roles.role(user),
             "banned": bool(user.banned), "team_id": user.team_id, "team_name": team.name if team else None,
             "ready_at": iso(ready.ready_at) if ready else None,
-            "can_change_role": blocked is None, "role_change_reason": blocked}
+            "can_change_role": blocked is None, "role_change_reason": blocked,
+            "can_delete": deletion is None, "delete_reason": deletion,
+            "can_set_active": access is None, "access_reason": access}
+
+
+@api.after_request
+def private_accounts(response):
+    if request.path.startswith("/api/v1/quest/admin/users"):
+        response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+def locked_administrator():
+    e = event(lock=True)
+    if not lifecycle.administrator():
+        fail("Administrator access required", 403)
+    return e
+
+
+def identified_user(user_id, data):
+    user = Users.query.populate_existing().filter_by(id=user_id).first()
+    if user is None:
+        fail("User not found", 404)
+    if not lifecycle.valid_identity(user, data.get("identity")):
+        fail("This account changed or your page is outdated. Refresh Users before trying again.", 409)
+    return user
 
 
 @api.route("/admin/users")
@@ -920,17 +953,10 @@ def managed_users():
 @api.route("/admin/users/<int:user_id>/role", methods=["PATCH"])
 @admin
 def change_user_role(user_id):
-    data, e = body(), event(lock=True)
-    # Native account changes may commit while this request waits for the lock.
-    # Read scalar columns rather than native role caches or an earlier ORM user.
-    actor = db.session.query(Users.type, Users.banned).filter(Users.id == session.get("id")).first()
-    if actor is None or actor.type != "admin" or actor.banned:
-        fail("Administrator access required", 403)
-    if set(data) != {"role", "confirm"} or data["confirm"] is not True or data["role"] not in ("participant", "maintainer"):
-        fail("Supply role participant or maintainer and confirm: true")
-    user = Users.query.get(user_id)
-    if user is None:
-        fail("User not found", 404)
+    data, e = body(), locked_administrator()
+    user = identified_user(user_id, data)
+    if set(data) != {"role", "confirm", "identity"} or data["confirm"] is not True or data["role"] not in ("participant", "maintainer"):
+        fail("Supply role participant or maintainer, confirm: true and the current identity")
     if user.type != "user":
         fail("Native administrators are managed through CTFd", 409)
     previous = roles.role(user)
@@ -961,3 +987,37 @@ def change_user_role(user_id):
         clear_team_session(old_team.id)
     clear_standings()
     return success(managed_user(user, e))
+
+
+@api.route("/admin/users/<int:user_id>/access", methods=["PATCH"])
+@admin
+def configure_user_access(user_id):
+    data, e = body(), locked_administrator()
+    user = identified_user(user_id, data)
+    if set(data) != {"active", "confirm", "identity"} or data["confirm"] is not True:
+        fail("Supply active, confirm: true and the current identity")
+    active = boolean(data["active"], "active")
+    blocked = lifecycle.access_reason(user, e, changing=bool(user.banned) == active)
+    if blocked:
+        fail(blocked, 409)
+    old_team = user.team_id
+    lifecycle.set_active(user, active, e, "quest")
+    db.session.commit()
+    lifecycle.invalidate(user_id, old_team)
+    return success(managed_user(user, e))
+
+
+@api.route("/admin/users/<int:user_id>", methods=["DELETE"])
+@admin
+def delete_user(user_id):
+    data, e = body(), locked_administrator()
+    user = identified_user(user_id, data)
+    if set(data) != {"confirm", "identity"} or data["confirm"] is not True:
+        fail("Supply confirm: true and the current identity")
+    blocked = lifecycle.delete_reason(user, e)
+    if blocked:
+        fail(blocked, 409)
+    tid = lifecycle.safe_delete(user, "quest")
+    db.session.commit()
+    lifecycle.invalidate(user_id, tid)
+    return success({"id": user_id, "deleted": True})
