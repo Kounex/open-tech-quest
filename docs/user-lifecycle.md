@@ -45,14 +45,20 @@ Existing session/CSRF/envelope rules apply. Every write takes the shared event
 lock and then rechecks the actor's persisted admin/type/banned state. Check the
 target and current team/activity under that same transaction. Native paths use
 the same rules; no route may call an unconditional destructive upstream helper.
+Native DELETE for participant/maintainer accounts directs administrators to the
+identity-bound Quest Users action; full administrator management stays native
+with last-admin, self and history protections.
 
-- `ManagedUser` adds `can_delete:boolean`, `delete_reason:string|null`,
+- `ManagedUser` adds `identity:string` (server-bound account incarnation token),
+  `can_delete:boolean`, `delete_reason:string|null`,
   `can_set_active:boolean`, `access_reason:string|null`.
-- DELETE `/admin/users/<id>` body `{confirm:true}` returns `{id,deleted:true}`.
-- PATCH `/admin/users/<id>/access` body `{active:boolean,confirm:true}` returns
+- DELETE `/admin/users/<id>` body `{confirm:true,identity}` returns `{id,deleted:true}`.
+- PATCH `/admin/users/<id>/access` body `{active:boolean,confirm:true,identity}` returns
   the updated ManagedUser. Same-state retries are idempotent.
-- Existing PATCH `/admin/users/<id>/role` keeps its contract; rejection reasons
-  must match metadata displayed in Users.
+- Existing PATCH `/admin/users/<id>/role` adds the same required `identity` to
+  `{role,confirm:true}`; old pages get a clear refresh message. Reject stale
+  identity tokens before mutation, including SQLite delete/re-register ID reuse.
+  Rejection reasons must match metadata displayed in Users.
 - Sensitive account responses use `Cache-Control: private, no-store`.
 - Audit IDs, action/role/access transitions and membership effects; no passwords,
   tokens, submitted flags or credential material. Preserve audit history.
