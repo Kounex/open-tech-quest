@@ -1446,7 +1446,7 @@ class QuestIntegration(unittest.TestCase):
     def test_attendance_defaults_off_and_registration_never_confirms_a_person(self):
         self.open_onboarding()
         before = self.alice.get(PREFIX+"/onboarding").json["data"]
-        self.assertEqual(before["attendance"], {"enabled":False,"generation":0,"opened_at":None,"closed_at":None,"can_open":True,"reason":None})
+        self.assertEqual(before["attendance"], {"enabled":False,"generation":0,"opened_at":None,"closed_at":None,"can_open":True,"reason":None,"late_only":False})
         self.assertFalse(before["can_ready"])
         self.assertEqual(self.post(self.alice,PREFIX+"/onboarding/ready",{}).status_code,409)
         for index,enabled in enumerate((False,True)):
@@ -1648,18 +1648,17 @@ class QuestIntegration(unittest.TestCase):
         self.assertEqual(self.post(self.alice,PREFIX+"/onboarding/name",{"name":"Window Foxes","confirm":True}).status_code,200)
         self.attendance_window(False)
         self.assertEqual(self.onboarding_action("finalize").status_code,200)
-        forbidden = self.post(self.admin,PREFIX+"/admin/attendance",{"enabled":True},"PATCH")
-        self.assertEqual(forbidden.status_code,409)
-        self.assertFalse(self.admin.get(PREFIX+"/admin/state").json["data"]["onboarding"]["attendance"]["can_open"])
-        # Corrupted/manual open state still cannot bypass the event-start guard.
-        with self.app.app_context():
-            QuestOnboarding.query.get(1).attendance_open = True
-            db.session.commit()
+        late = self.post(self.admin,PREFIX+"/admin/attendance",{"enabled":True},"PATCH")
+        self.assertEqual(late.status_code,200)
+        self.assertTrue(late.json["data"]["late_only"])
+        self.assertTrue(self.admin.get(PREFIX+"/admin/state").json["data"]["onboarding"]["attendance"]["can_open"])
         start = self.post(self.admin,PREFIX+"/admin/event/action",{"action":"start"})
         self.assertEqual(start.status_code,409)
         self.assertIn("Close attendance",start.json["error"])
         self.attendance_window(False)
         self.action("start")
+        self.assertTrue(self.attendance_window(True)["late_only"])
+        self.action("close")
         self.assertEqual(self.post(self.admin,PREFIX+"/admin/attendance",{"enabled":True},"PATCH").status_code,409)
         with self.app.app_context():
             sources = [r.detail["source"] for r in QuestAudit.query.filter_by(action="attendance.configure").all()]
@@ -2867,3 +2866,365 @@ class QuestIntegration(unittest.TestCase):
         accepted=self.solve(self.alice,1)
         self.assertEqual(accepted.json["data"]["status"],"correct",accepted.get_data(as_text=True))
         self.assertEqual(self.timing_standings()[self.team_id]["total"],1)
+
+    def late_accounts(self, *ids):
+        with self.app.app_context():
+            for uid in ids:
+                db.session.add(Users(id=uid,name=f"Late {uid}",email=f"late-{uid}@example.test",password="test-only",verified=True))
+            db.session.commit()
+        return [self.client(uid) for uid in ids]
+
+    def late_status(self):
+        response=self.admin.get(PREFIX+"/admin/state")
+        self.assertEqual(response.status_code,200,response.get_data(as_text=True))
+        return response.json["data"]["onboarding"]["late_admission"]
+
+    def admit(self, ids, fingerprint=None, **target):
+        if fingerprint is None:
+            fingerprint=self.late_status()["fingerprint"]
+        return self.post(self.admin,PREFIX+"/admin/onboarding/admit",dict(target,user_ids=ids,reason="Checked-in event-day newcomers",fingerprint=fingerprint))
+
+    def test_late_admission_finalized_window_is_late_only_and_personal(self):
+        late,assigned,staff,banned,history=self.late_accounts(5,6,7,8,9)
+        with self.app.app_context():
+            Users.query.get(6).team_id=self.team_id
+            Users.query.get(8).banned=True
+            db.session.add(QuestMaintainer(user_id=7,previous_hidden=False))
+            db.session.add(Submissions(user_id=9,team_id=self.other_id,challenge_id=1,type="incorrect",provided="Historical activity"))
+            db.session.commit()
+        initial=self.late_status()
+        self.assertTrue(initial["allowed"])
+        self.assertIsInstance(initial["fingerprint"],str)
+        self.assertFalse(late.get(PREFIX+"/onboarding").json["data"]["can_ready"])
+        opened=self.attendance_window(True)
+        self.assertTrue(opened["late_only"])
+        self.assertTrue(late.get(PREFIX+"/onboarding").json["data"]["can_ready"])
+        self.assertFalse(assigned.get(PREFIX+"/onboarding").json["data"]["can_ready"])
+        self.assertFalse(history.get(PREFIX+"/onboarding").json["data"]["can_ready"])
+        self.assertEqual(staff.get(PREFIX+"/onboarding").status_code,403)
+        for client in (assigned,history):
+            self.assertEqual(self.post(client,PREFIX+"/onboarding/ready",{}).status_code,409)
+            self.assertEqual(client.get(PREFIX+"/bootstrap",headers={"Sec-Fetch-Dest":"empty"}).status_code,200)
+        self.assertIn(self.post(banned,PREFIX+"/onboarding/ready",{}).status_code,(302,403))
+        self.assertEqual(late.get(PREFIX+"/bootstrap",headers={"Sec-Fetch-Dest":"empty"}).status_code,409)
+        confirmed=self.ready_user(late)
+        self.assertTrue(confirmed["late"])
+        stamp=confirmed["ready_at"]
+        self.attendance_window(False)
+        self.assertEqual(self.ready_user(late)["ready_at"],stamp)
+        self.assertEqual(self.post(assigned,PREFIX+"/onboarding/ready",{}).status_code,409)
+        with self.app.app_context():
+            self.assertEqual(QuestStart.query.count(),0)
+            self.assertEqual(Solves.query.count(),0)
+            self.assertIsNone(QuestEvent.query.get(1).start_at)
+            self.assertEqual(QuestOnboarding.query.get(1).phase,"finalized")
+        self.assertTrue(self.guest.get(PREFIX+"/bootstrap").json["data"]["registration"]["enabled"])
+
+    def test_late_admission_existing_live_team_preserves_progress_and_banned_credit(self):
+        self.action("start")
+        self.start()
+        self.solve(self.alice,1)
+        self.assertEqual(self.account_action(2,"access",active=False).status_code,200)
+        newcomer=self.late_accounts(5)[0]
+        self.attendance_window(True)
+        ready=self.ready_user(newcomer)["ready_at"]
+        before=self.timing_standings()[self.team_id]
+        self.assertEqual(before["total"],0)
+        with self.app.app_context():
+            native=[(s.id,s.user_id,s.team_id,s.date,s.provided) for s in Solves.query.all()]
+            starts=[(s.id,s.team_id,s.room_id,s.started_at) for s in QuestStart.query.all()]
+            e=QuestEvent.query.get(1)
+            event_before=(e.status,e.start_at,e.end_at,e.room_clock,e.overall_clock)
+            memberships=[(u.id,u.team_id) for u in Users.query.filter(Users.id<5).order_by(Users.id).all()]
+        response=self.admit([5],team_id=self.team_id)
+        self.assertEqual(response.status_code,200,response.get_data(as_text=True))
+        self.assertEqual(self.timing_standings()[self.team_id],before)
+        self.assertEqual(self.ready_user(newcomer)["ready_at"],ready)
+        self.assertEqual(newcomer.get("/api/v1/challenges/1").status_code,200)
+        with self.app.app_context():
+            self.assertEqual([(s.id,s.user_id,s.team_id,s.date,s.provided) for s in Solves.query.all()],native)
+            self.assertEqual([(s.id,s.team_id,s.room_id,s.started_at) for s in QuestStart.query.all()],starts)
+            e=QuestEvent.query.get(1)
+            self.assertEqual((e.status,e.start_at,e.end_at,e.room_clock,e.overall_clock),event_before)
+            self.assertEqual([(u.id,u.team_id) for u in Users.query.filter(Users.id<5).order_by(Users.id).all()],memberships)
+            self.assertEqual(Users.query.get(5).team_id,self.team_id)
+            entry=QuestAudit.query.filter_by(action="onboarding.admit").one()
+            self.assertEqual(entry.actor_id,1)
+            self.assertEqual(entry.detail["user_ids"],[5])
+            self.assertFalse(entry.detail["new_team"])
+            self.assertIsNotNone(entry.detail["joined_at"])
+        self.assertFalse(self.managed_account(5)["can_delete"])
+        self.assertEqual(self.post(newcomer,PREFIX+"/onboarding/name",{"name":"Frozen","confirm":True}).status_code,409)
+        recovered=self.solve(newcomer,1)
+        self.assertEqual(recovered.json["data"]["status"],"correct",recovered.get_data(as_text=True))
+        self.assertEqual(self.timing_standings()[self.team_id]["total"],1)
+
+    def test_late_admission_additional_named_team_uses_normal_start_and_real_admin_lock(self):
+        self.action("start")
+        first,second=self.late_accounts(5,6)
+        self.attendance_window(True)
+        self.ready_user(first)
+        self.ready_user(second)
+        response=self.admit([6,5],new_team_name="Comet Crew")
+        self.assertEqual(response.status_code,200,response.get_data(as_text=True))
+        with self.app.app_context():
+            team=Teams.query.filter_by(name="Comet Crew").one()
+            tid=team.id
+            self.assertEqual(team.captain_id,6)
+            self.assertEqual({u.id for u in team.members},{5,6})
+            locked=QuestTeamName.query.get(tid)
+            self.assertTrue(locked.name_locked)
+            self.assertEqual(locked.claimed_by,1)
+            self.assertEqual(QuestStart.query.filter_by(team_id=tid).count(),0)
+            self.assertEqual(Solves.query.filter_by(team_id=tid).count(),0)
+            self.assertEqual(QuestOnboarding.query.get(1).phase,"finalized")
+        row=self.timing_standings()[tid]
+        self.assertEqual(row["total"],0)
+        self.assertIsNone(row["rank"])
+        self.assertEqual(first.get("/api/v1/challenges/1").status_code,403)
+        self.assertEqual(self.solve(first,1).status_code,403)
+        self.start(first)
+        self.assertEqual(self.solve(second,1).json["data"]["status"],"correct")
+        self.assertEqual(self.timing_standings()[tid]["total"],1)
+        self.assertEqual(self.post(self.admin,"/api/v1/teams/"+str(tid)+"/members",{"user_id":4}).status_code,409)
+        self.assertEqual(self.post(first,"/api/v1/teams/"+str(tid),{"name":"Bypass"},"PATCH").status_code,403)
+
+    def test_late_admission_permissions_strict_body_capacity_targets_and_no_partial_changes(self):
+        clients=self.late_accounts(5,6,7)
+        self.attendance_window(True)
+        for client in clients:
+            self.ready_user(client)
+        path=PREFIX+"/admin/onboarding/admit"
+        fingerprint=self.late_status()["fingerprint"]
+        valid={"user_ids":[5],"team_id":self.team_id,"reason":"Explicit placement","fingerprint":fingerprint}
+        self.assertEqual(self.post(self.alice,path,valid).status_code,403)
+        self.assertEqual(self.admin.post(path,json=valid).status_code,403)
+        with self.guest.session_transaction() as session:
+            session["nonce"]="quest-test-csrf"
+        self.assertEqual(self.post(self.guest,path,valid).status_code,401)
+        for data in (dict(valid,new_team_name="Both targets"),{k:v for k,v in valid.items() if k!="reason"},dict(valid,unknown=True),dict(valid,reason=""),dict(valid,user_ids=[5,5]),dict(valid,team_id=True)):
+            self.assertEqual(self.post(self.admin,path,data).status_code,400)
+        with self.app.app_context():
+            QuestOnboarding.query.get(1).team_size=2
+            db.session.commit()
+        self.assertEqual(self.admit([5],team_id=self.team_id).status_code,409)
+        with self.app.app_context():
+            QuestOnboarding.query.get(1).team_size=3
+            Users.query.get(2).banned=True
+            db.session.commit()
+        self.assertEqual(self.admit([5,6],team_id=self.team_id).status_code,409)  # Banned members still consume capacity.
+        for field in ("hidden","banned"):
+            with self.app.app_context():
+                setattr(Teams.query.get(self.team_id),field,True)
+                db.session.commit()
+            self.assertEqual(self.admit([5],team_id=self.team_id).status_code,409)
+            with self.app.app_context():
+                setattr(Teams.query.get(self.team_id),field,False)
+                db.session.commit()
+        with self.app.app_context():
+            QuestTeamName.query.get(self.team_id).name_locked=False
+            db.session.commit()
+        self.assertEqual(self.admit([5],team_id=self.team_id).status_code,409)
+        self.assertEqual(self.admit([5],team_id=999999).status_code,404)
+        for name in ("Team 01","TEAM01","RED TEAM",None,""):
+            result=self.admit([5],new_team_name=name)
+            self.assertIn(result.status_code,(400,409),result.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertTrue(all(Users.query.get(uid).team_id is None for uid in (5,6,7)))
+            self.assertEqual(Teams.query.count(),2)
+            self.assertEqual(QuestAudit.query.filter_by(action="onboarding.admit").count(),0)
+
+    def test_late_admission_rejects_staff_banned_history_not_ready_and_existing_members(self):
+        self.late_accounts(5,6,7,8)
+        with self.app.app_context():
+            for uid in (5,6,7):
+                db.session.add(QuestReadiness(user_id=uid,late=True))
+            db.session.add(QuestMaintainer(user_id=5,previous_hidden=False))
+            Users.query.get(6).banned=True
+            db.session.add(Submissions(user_id=7,team_id=self.other_id,challenge_id=1,type="incorrect",provided="Historical attempt"))
+            db.session.commit()
+        for uid in (2,5,6,7,8,999999):
+            result=self.admit([uid],new_team_name="Must Not Exist")
+            self.assertEqual(result.status_code,409,result.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Teams.query.count(),2)
+            self.assertEqual(Submissions.query.count(),1)
+            self.assertEqual(QuestAudit.query.filter_by(action="onboarding.admit").count(),0)
+
+    def test_late_admission_concurrent_duplicate_new_team_is_atomic(self):
+        first,second=self.late_accounts(5,6)
+        self.attendance_window(True)
+        self.ready_user(first)
+        self.ready_user(second)
+        fingerprint=self.late_status()["fingerprint"]
+        payload={"user_ids":[5,6],"new_team_name":"Atomic Arrivals","reason":"One agreed final team","fingerprint":fingerprint}
+        def send(_):
+            return self.post(self.client(1),PREFIX+"/admin/onboarding/admit",payload)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses=list(pool.map(send,(1,2)))
+        self.assertEqual(sorted(r.status_code for r in responses),[200,409])
+        with self.app.app_context():
+            team=Teams.query.filter_by(name="Atomic Arrivals").one()
+            self.assertEqual({u.id for u in team.members},{5,6})
+            self.assertEqual(QuestAudit.query.filter_by(action="onboarding.admit").count(),1)
+            self.assertEqual(Teams.query.count(),3)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/onboarding/admit",payload).status_code,409)
+
+    def test_late_admission_fingerprints_cover_capacity_window_and_account_incarnation(self):
+        newcomer=self.late_accounts(5)[0]
+        self.attendance_window(True)
+        self.ready_user(newcomer)
+        with self.app.app_context():
+            stamp=QuestReadiness.query.get(5).ready_at
+        fingerprint=self.late_status()["fingerprint"]
+        self.attendance_window(False)
+        self.assertEqual(self.admit([5],fingerprint,team_id=self.team_id).status_code,409)
+        fingerprint=self.late_status()["fingerprint"]
+        with self.app.app_context():
+            QuestOnboarding.query.get(1).team_size=4
+            db.session.commit()
+        self.assertEqual(self.admit([5],fingerprint,team_id=self.team_id).status_code,409)
+        fingerprint=self.late_status()["fingerprint"]
+        self.assertEqual(self.account_action(5,"delete").status_code,200)
+        with self.app.app_context():
+            db.session.add(Users(id=5,name="Late 5",email="late-5@example.test",password="new-account",verified=True))
+            db.session.flush()
+            db.session.add(QuestReadiness(user_id=5,late=True,ready_at=stamp))
+            db.session.commit()
+        self.assertEqual(self.admit([5],fingerprint,new_team_name="Stale Identity").status_code,409)
+        with self.app.app_context():
+            self.assertIsNone(Users.query.get(5).team_id)
+            self.assertIsNone(Teams.query.filter_by(name="Stale Identity").first())
+        self.assertEqual(self.admit([5],team_id=self.team_id).status_code,200)
+
+    def test_late_admission_pause_close_cutoff_and_start_guards_preserve_clocks(self):
+        newcomer,waiting=self.late_accounts(5,6)
+        self.attendance_window(True)
+        self.ready_user(newcomer)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/event/action",{"action":"start"}).status_code,409)
+        self.attendance_window(False)
+        self.action("start")
+        self.start()
+        self.attendance_window(True)
+        self.action("pause")
+        with self.app.app_context():
+            starts=[(s.team_id,s.room_id,s.started_at) for s in QuestStart.query.all()]
+            pauses=[(p.started_at,p.ended_at) for p in QuestPause.query.all()]
+        self.assertEqual(self.admit([5],team_id=self.team_id).status_code,200)
+        self.assertEqual(self.solve(newcomer,1).status_code,409)
+        self.assertEqual(self.post(newcomer,PREFIX+"/rooms/ansible/start",{}).status_code,409)
+        with self.app.app_context():
+            self.assertEqual([(s.team_id,s.room_id,s.started_at) for s in QuestStart.query.all()],starts)
+            self.assertEqual([(p.started_at,p.ended_at) for p in QuestPause.query.all()],pauses)
+            self.assertEqual(Solves.query.count(),0)
+        self.action("close")
+        status=self.late_status()
+        self.assertFalse(status["allowed"])
+        self.assertIsNone(status["fingerprint"])
+        self.assertFalse(waiting.get(PREFIX+"/onboarding").json["data"]["can_ready"])
+        self.assertFalse(self.admin.get(PREFIX+"/admin/state").json["data"]["onboarding"]["attendance"]["enabled"])
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/attendance",{"enabled":True},"PATCH").status_code,409)
+        self.assertEqual(self.admit([6],new_team_name="After close").status_code,409)
+        self.action("publish")
+        self.assertEqual(self.admit([6],new_team_name="After publish").status_code,409)
+        with self.app.app_context():
+            e=QuestEvent.query.get(1)
+            e.status="live"
+            e.end_at=datetime.utcnow()-timedelta(seconds=1)
+            db.session.commit()
+        self.assertFalse(self.late_status()["allowed"])
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/attendance",{"enabled":True},"PATCH").status_code,409)
+        self.assertEqual(self.admit([6],new_team_name="After cutoff").status_code,409)
+
+    def test_late_admission_rechecks_revoked_actor_and_close_while_waiting(self):
+        self.action("start")
+        newcomer=self.late_accounts(6)[0]
+        self.attendance_window(True)
+        self.ready_user(newcomer)
+        with self.app.app_context():
+            db.session.add(Users(id=5,name="Late placement admin",email="late-admin@example.test",type="admin",password="test-only"))
+            db.session.commit()
+        browser=self.native_login("Late placement admin")
+        path=PREFIX+"/admin/onboarding/admit"
+        payload={"user_ids":[6],"team_id":self.team_id,"reason":"Waiting placement","fingerprint":self.late_status()["fingerprint"]}
+        def demote():
+            result=self.post(self.admin,"/api/v1/users/5",{"type":"user"},"PATCH")
+            self.assertEqual(result.status_code,200,result.get_data(as_text=True))
+        denied=self.gated_lifecycle_write(5,path,payload,"POST",demote,browser=browser)
+        self.assertEqual(denied.status_code,403,denied.get_data(as_text=True))
+        payload["fingerprint"]=self.late_status()["fingerprint"]
+        closed=self.gated_lifecycle_write(1,path,payload,"POST",lambda:self.action("close"))
+        self.assertEqual(closed.status_code,409,closed.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertIsNone(Users.query.get(6).team_id)
+            self.assertEqual(QuestAudit.query.filter_by(action="onboarding.admit").count(),0)
+
+    def test_late_admission_unavailable_before_finalization_and_optimizer_stays_frozen(self):
+        self.open_onboarding()
+        status=self.late_status()
+        self.assertFalse(status["allowed"])
+        self.assertIsNone(status["fingerprint"])
+        self.assertEqual(self.admit([2],new_team_name="Not finalized").status_code,409)
+        with self.app.app_context():
+            QuestOnboarding.query.get(1).phase="finalized"
+            db.session.commit()
+        self.assertTrue(self.late_status()["allowed"])
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":True}).status_code,409)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/onboarding/optimize",{"preview":True}).status_code,409)
+        self.assertEqual(self.post(self.admin,PREFIX+f"/admin/teams/{self.team_id}",{"user_ids":[2]},"PATCH").status_code,409)
+
+    def test_late_admission_waiting_newcomer_does_not_hold_start_after_capture_closes(self):
+        self.open_onboarding()
+        self.attendance_window(True)
+        self.ready_user(self.alice)
+        self.ready_user(self.bob)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        self.apply_attendance(self.attendance_plan())
+        self.assertEqual(self.post(self.alice,PREFIX+"/onboarding/name",{"name":"On-time Foxes","confirm":True}).status_code,200)
+        self.assertEqual(self.onboarding_action("finalize").status_code,200)
+        newcomer=self.late_accounts(5)[0]
+        self.attendance_window(True)
+        self.ready_user(newcomer)
+        blocked=self.post(self.admin,PREFIX+"/admin/event/action",{"action":"start"})
+        self.assertEqual(blocked.status_code,409)
+        self.assertIn("Close attendance",blocked.json["error"])
+        self.attendance_window(False)
+        self.assertTrue(self.admin.get(PREFIX+"/admin/state").json["data"]["onboarding"]["can_start"])
+        self.action("start")
+        with self.app.app_context():
+            self.assertIsNone(Users.query.get(5).team_id)
+            self.assertTrue(QuestReadiness.query.get(5).late)
+            self.assertGreater(QuestReadiness.query.get(5).ready_at,QuestOnboarding.query.get(1).finalized_at)
+            tid=Users.query.get(2).team_id
+        admitted=self.admit([5],team_id=tid)
+        self.assertEqual(admitted.status_code,200,admitted.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Users.query.get(5).team_id,tid)
+            self.assertEqual(QuestStart.query.count(),0)
+
+    def test_late_admission_start_exception_never_bypasses_earlier_unresolved_readiness(self):
+        from CTFd.plugins.open_tech_quest import onboarding
+        with self.app.app_context():
+            state=QuestOnboarding.query.get(1)
+            state.grandfathered=False
+            state.finalized_at=datetime.utcnow()
+            Users.query.get(4).team_id=None
+            QuestReadiness.query.get(4).late=True
+            QuestReadiness.query.get(4).ready_at=state.finalized_at-timedelta(seconds=1)
+            db.session.commit()
+        denied=self.post(self.admin,PREFIX+"/admin/event/action",{"action":"start"})
+        self.assertEqual(denied.status_code,409)
+        self.assertIn("Assign every ready",denied.json["error"])
+        with self.app.app_context():
+            state=QuestOnboarding.query.get(1)
+            QuestReadiness.query.get(4).ready_at=state.finalized_at+timedelta(seconds=1)
+            for uid in (2,3):
+                Users.query.get(uid).banned=True
+            db.session.commit()
+        denied=self.post(self.admin,PREFIX+"/admin/event/action",{"action":"start"})
+        self.assertEqual(denied.status_code,409)
+        self.assertIn("attended, assigned team",denied.json["error"])
+        with self.app.app_context():
+            state=QuestOnboarding.query.get(1)
+            state.phase="naming"
+            self.assertIsNotNone(onboarding.finalization_reason())

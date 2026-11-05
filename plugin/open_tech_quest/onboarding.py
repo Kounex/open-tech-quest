@@ -58,6 +58,8 @@ def lock_name(team_id, actor_id):
 
 def attendance_reason(e, state=None):
     state = state or settings()
+    if state.phase == "finalized":
+        return late_admission_reason(e, state)
     if e.status != "draft":
         return "Attendance can open only before the competition starts."
     if state.phase not in ("check_in", "closed", "naming"):
@@ -70,7 +72,34 @@ def attendance(e, state=None):
     reason = attendance_reason(e, state)
     return {"enabled": bool(state.attendance_open), "generation": state.attendance_generation,
             "opened_at": iso(state.attendance_opened_at), "closed_at": iso(state.attendance_closed_at),
-            "can_open": reason is None, "reason": reason}
+            "can_open": reason is None, "reason": reason, "late_only": state.phase == "finalized"}
+
+
+def late_admission_reason(e, state=None):
+    state = state or settings()
+    if state.phase != "finalized":
+        return "Late admission is available only after rosters are finalized."
+    if e.status not in ("draft", "live", "paused"):
+        return "Late attendance and admission are unavailable after the event closes."
+    if e.end_at and now() >= e.end_at:
+        return "The event cutoff has passed; late attendance and admission are closed."
+    return None
+
+
+def late_admission(e):
+    blocked = late_admission_reason(e)
+    return {"allowed": blocked is None, "reason": blocked,
+            "fingerprint": fingerprint(e) if blocked is None else None}
+
+
+def can_confirm(user, e, state=None):
+    state = state or settings()
+    if not state.attendance_open or not eligible(user) or attendance_reason(e, state):
+        return False
+    if state.phase == "finalized":
+        from .lifecycle import personal_activity
+        return user.team_id is None and not personal_activity(user)
+    return True
 
 
 def change_attendance(e, enabled, source):
@@ -106,7 +135,7 @@ def participant(user, e):
             "ready_at": iso(ready.ready_at) if ready else None, "late": bool(ready and ready.late),
             "roster_released": show, "team": roster,
             "attendance": attendance(e, state),
-            "can_ready": bool(state.attendance_open) and eligible(user) and state.phase in ("check_in", "closed", "naming") and e.status == "draft" and not ready,
+            "can_ready": bool(not ready and can_confirm(user, e, state)),
             "can_name": bool(eligible(user) and ready and team and not team.banned and not team.hidden
                              and state.phase == "naming" and e.status == "draft" and not is_locked(team.id))}
 
@@ -116,11 +145,11 @@ def competing_teams():
             if any(eligible(user) for user in team.members)]
 
 
-def finalization_reason():
+def finalization_reason(allow_late_queue=False):
     state = settings()
     if state.attendance_open:
         return "Close attendance capture before finalizing team rosters."
-    ready = {r.user_id for r in QuestReadiness.query.all()}
+    ready = {r.user_id: r for r in QuestReadiness.query.all()}
     users = [u for u in Users.query.filter_by(type="user", banned=False).all() if eligible(u)]
     teams = {team.id: team for team in Teams.query.all()}
     locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
@@ -128,6 +157,12 @@ def finalization_reason():
         return "At least one ready participant is required before finalization."
     for user in users:
         if user.id in ready and not user.team_id:
+            row = ready[user.id]
+            if (allow_late_queue and state.phase == "finalized" and state.finalized_at
+                    and row.late and row.ready_at > state.finalized_at):
+                from .lifecycle import personal_activity
+                if not personal_activity(user):
+                    continue
             return "Assign every ready late arrival before finalizing rosters."
         if user.team_id and user.id not in ready:
             return "Remove non-ready participants from provisional rosters before finalizing."
@@ -154,8 +189,11 @@ def start_reason(e):
         return "Configure at least one room challenge before starting the event."
     if settings().phase != "finalized":
         return "Finalize the attended team rosters and team names before starting the competition."
+    ready_ids = {row.user_id for row in QuestReadiness.query.all()}
+    if not any(user.id in ready_ids for team in competing_teams() for user in team.members if eligible(user)):
+        return "At least one attended, assigned team is required before starting the competition."
     if not settings().grandfathered:
-        reason = finalization_reason()
+        reason = finalization_reason(allow_late_queue=True)
         if reason:
             return reason
     locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
@@ -179,7 +217,7 @@ def summary(e):
             "pending_count": sum(u.id not in ready for u in users),
             "unassigned_ready_count": sum(u.id in ready and not u.team_id for u in users),
             "unnamed_count": sum(t.id not in locked for t in competing_teams()),
-            "can_start": reason is None, "start_reason": reason}
+            "can_start": reason is None, "start_reason": reason, "late_admission": late_admission(e)}
 
 
 def activity_teams():

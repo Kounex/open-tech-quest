@@ -169,7 +169,7 @@ def bootstrap():
     e, user = event(), get_current_user()
     if (request.headers.get("Sec-Fetch-Dest") == "empty"
             and request.headers.get("X-Quest-Attendance-UI") != "1"
-            and user and onboarding.eligible(user) and onboarding.settings().attendance_open
+            and user and onboarding.can_confirm(user, e)
             and QuestReadiness.query.get(user.id) is None):
         fail("Attendance check-in is open. Refresh this page once to load the attendance confirmation.", 409)
     response = success({"event": event_data(e), "viewer": viewer(), "rooms": current_rooms(),
@@ -237,6 +237,7 @@ def projector_view():
 def team_data(team, readiness=None, name_locks=None):
     readiness = readiness if readiness is not None else {row.user_id: row for row in QuestReadiness.query.filter(QuestReadiness.user_id.in_([u.id for u in team.members])).all()}
     return {"id": team.id, "name": team.name, "user_ids": [u.id for u in team.members],
+            "hidden": bool(team.hidden), "banned": bool(team.banned),
             "excluded": QuestExclusion.query.get(team.id) is not None,
             "name_locked": team.id in name_locks if name_locks is not None else onboarding.is_locked(team.id),
             "ready_count": sum(u.id in readiness for u in team.members)}
@@ -327,6 +328,7 @@ def event_action():
         for pause in QuestPause.query.filter_by(ended_at=None).all():
             pause.ended_at = cutoff
         e.status, e.end_at, e.paused_at = "closed", cutoff, None
+        onboarding.change_attendance(e, False, "event.close")
         native_config("end", int(cutoff.replace(tzinfo=timezone.utc).timestamp()))
         native_config("paused", True)
     elif action == "publish":
@@ -666,7 +668,7 @@ def ready_for_quest():
     row = QuestReadiness.query.get(user.id)
     state = onboarding.settings()
     if row is None:
-        if not state.attendance_open or e.status != "draft" or state.phase not in ("check_in", "closed", "naming"):
+        if not onboarding.can_confirm(user, e, state):
             fail("Attendance confirmation is closed. Wait for an organizer to open attendance check-in.", 409)
         row = QuestReadiness(user_id=user.id, ready_at=now(), late=state.phase != "check_in")
         db.session.add(row)
@@ -805,6 +807,62 @@ def optimize_onboarding():
         clear_user_session(user.id)
     for team in Teams.query.all():
         clear_team_session(team.id)
+    clear_standings()
+    return success(onboarding.summary(e))
+
+
+@api.route("/admin/onboarding/admit", methods=["POST"])
+@admin
+def admit_late_arrivals():
+    data, e = body(), locked_administrator()
+    blocked = onboarding.late_admission_reason(e)
+    if blocked:
+        fail(blocked, 409)
+    common = {"user_ids", "reason", "fingerprint"}
+    if set(data) not in (common | {"team_id"}, common | {"new_team_name"}):
+        fail("Supply user_ids, reason, fingerprint and exactly one of team_id or new_team_name")
+    supplied = data["fingerprint"]
+    if not isinstance(supplied, str) or re.fullmatch(r"[0-9a-f]{64}", supplied) is None or not __import__("hmac").compare_digest(supplied, onboarding.fingerprint(e)):
+        fail("Accounts, attendance or teams changed. Refresh late admission before confirming placement.", 409)
+    explanation = reason(data)
+    ids = user_ids(data)
+    capacity = onboarding.settings().team_size
+    if not ids or len(ids) > capacity:
+        fail("Choose ready newcomers within the saved team capacity")
+    users = Users.query.filter(Users.id.in_(ids)).all()
+    if len(users) != len(ids) or any(not onboarding.eligible(user) or user.team_id is not None
+                                   or QuestReadiness.query.get(user.id) is None or lifecycle.personal_activity(user) for user in users):
+        fail("Every newcomer must be eligible, ready, unassigned and have no competition history", 409)
+    created = "new_team_name" in data
+    if created:
+        name = unique_name(data["new_team_name"])
+        if re.fullmatch(r"team\s*\d+", name, re.IGNORECASE):
+            fail("Choose an agreed final team name instead of a Team NN placeholder")
+        team = Teams(name=name, captain_id=ids[0])
+    else:
+        team = Teams.query.get(integer(data["team_id"], "Team ID"))
+        if team is None:
+            fail("Team not found", 404)
+        if team.hidden or team.banned or not onboarding.is_locked(team.id):
+            fail("Choose a visible, non-banned team with a confirmed final name", 409)
+        if len(team.members) + len(ids) > capacity:
+            fail("The team does not have enough space within the saved capacity", 409)
+    joined_at = now()
+    if e.end_at and joined_at >= e.end_at:
+        fail("The event cutoff has passed; late attendance and admission are closed.", 409)
+    if created:
+        actor_id = lifecycle.current_user().id
+        db.session.add(team)
+        db.session.flush()
+        onboarding.lock_name(team.id, actor_id)
+    for user in users:
+        user.team_id = team.id
+    audit("onboarding.admit", {"user_ids": ids, "team_id": team.id, "new_team": created,
+                               "reason": explanation, "joined_at": iso(joined_at)})
+    db.session.commit()
+    for uid in ids:
+        clear_user_session(uid)
+    clear_team_session(team.id)
     clear_standings()
     return success(onboarding.summary(e))
 
