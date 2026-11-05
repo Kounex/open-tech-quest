@@ -110,3 +110,40 @@ SQL/uploads backup taken before this upgrade is
 `/root/ocp-backups/ctfd/pre-account-moderation-late-20261105T145950Z/`.
 Restore matching plugin code with the database: older code cannot interpret the
 new native `quest_recovery` submission subtype.
+
+## Attendance-first team formation — 2026-11-05
+
+Release **0.1.15**, source
+[`6592c67`](https://github.com/Kounex/open-tech-quest/commit/6592c67a8aca06980fedbd82fe7edd380d4d57e9),
+passed [release CI](https://github.com/Kounex/open-tech-quest/actions/runs/42070881719):
+150 cases on each database, with three skips per dialect; frontend check/build;
+runtime empty-install smoke; and publication tests. The first full run caught
+one older fixture inserting duplicate team-name metadata after an organizer
+correction. It now reuses the actual row and asserts the administrator's
+provenance; runtime behavior was unchanged. Independent review has no outstanding
+findings. See [attendance-first acceptance](attendance-first.md) for actual
+registration/attendance/grouping, both naming modes, event starts, native shared
+solve, restart, accessibility and mobile verification.
+
+The anonymous GHCR pull and OCI labels verified the exact tested revision.
+Initialization and runtime are both pinned to:
+
+```text
+ghcr.io/kounex/open-tech-quest:0.1.15@sha256:7327e4279f8989129ba3c375911ec8c60d45b291791620e09cf56caf9d4605e2
+```
+
+All 37 GitOps kustomizations passed build/schema validation. GitOps
+[`083e903`](https://github.com/Kounex/ocp-gitops/commit/083e90376ce0ab8df00b6915049b2783acad3c43)
+passed [repository CI](https://github.com/Kounex/ocp-gitops/actions/runs/42072726292).
+Argo reported Synced / Healthy at that revision and deployment rollout completed.
+All three PVCs remained Bound and the Doppler ExternalSecret remained Ready.
+
+Read-only authenticated checks confirmed `allow_team_naming:false`, unchanged
+event/content/account/attendance/team data and byte-identical built frontend
+assets. An administrator explicitly closed registration before the rollout;
+the audit timestamp established this and that setting was preserved. Production
+remains draft/check-in with five rooms, 25 demo challenges, attendance closed at
+generation zero, one native administrator and no participants, teams or readiness
+records. No production grouping or naming actions were used for QA.
+Private pre-upgrade SQL/uploads backup:
+`/root/ocp-backups/ctfd/pre-attendance-first-20261105T163847Z/`.
