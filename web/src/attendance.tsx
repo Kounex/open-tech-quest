@@ -10,6 +10,7 @@ import type {
 } from "./types";
 import { Confirm, Empty, Notice } from "./ui";
 import { AttendanceWindowControls } from "./attendance-window";
+import { LateAdmission } from "./late-admission";
 
 type Mutation = (
   path: string,
@@ -33,7 +34,12 @@ function teamPeople(data: AdminState, team: Team) {
   );
 }
 
-export function Attendance({ data, busy, mutate }: Props) {
+export function Attendance({
+  data,
+  busy,
+  mutate,
+  onRefresh,
+}: Props & { onRefresh: () => Promise<void> }) {
   const [query, setQuery] = useState(""),
     [view, setView] = useState<"teams" | "people">("teams"),
     [filter, setFilter] = useState("all");
@@ -147,6 +153,14 @@ export function Attendance({ data, busy, mutate }: Props) {
       {data.event.status === "draft" && state.phase === "naming" && (
         <LateQueue data={data} busy={busy} mutate={mutate} />
       )}
+      {state.phase === "finalized" && (
+        <LateAdmission
+          data={data}
+          busy={busy}
+          mutate={mutate}
+          onRefresh={onRefresh}
+        />
+      )}
       <div className="section-heading">
         <div>
           <h2>Teams and attendance</h2>
@@ -157,7 +171,7 @@ export function Attendance({ data, busy, mutate }: Props) {
                 ? "Review attendance before applying the final grouping plan."
                 : state.phase === "naming"
                   ? "Final groups can choose their name once. Place any ready late arrivals before finalizing."
-                  : "The roster is fixed. A reasoned name correction remains possible before the competition starts."}
+                  : "Existing players and team names stay fixed. Checked-in newcomers can be admitted through the controlled late-admission action when available."}
           </p>
         </div>
       </div>
@@ -271,6 +285,25 @@ function AttendanceLifecycle({ data, busy, mutate }: Props) {
           </li>
         ))}
       </ol>
+      {state.phase !== "finalized" && (
+        <div className="event-day-guidance">
+          <h3>Event-day sequence</h3>
+          <p>
+            Close registration and attendance capture at the cutoff. If
+            provisional grouping has not been applied, preview and apply the
+            initial random allocation during team preparation first. Moving to
+            review does not create teams or apply an optimization automatically.
+          </p>
+          <ol>
+            <li>Move to attendance review</li>
+            <li>Preview attendance optimization</li>
+            <li>Apply reviewed groups</li>
+            <li>Participants confirm team names</li>
+            <li>Finalize rosters</li>
+            <li>Start event from the Event tab</li>
+          </ol>
+        </div>
+      )}
       <div className="attendance-settings">
         <form
           onSubmit={(event) => {
@@ -392,8 +425,9 @@ function AttendanceLifecycle({ data, busy, mutate }: Props) {
         )}
       {state.phase === "finalized" && (
         <p className="meta">
-          Rosters are finalized. Start the competition separately from the Event
-          tab when every other requirement is satisfied.
+          {draft
+            ? "Rosters are finalized. Close attendance capture before starting the competition separately from the Event tab."
+            : "Rosters are finalized. Eligible newcomers can be admitted separately while existing players and competition clocks remain unchanged."}
         </p>
       )}
     </section>

@@ -93,6 +93,10 @@ function AuthenticatedParticipantSession({
     }
   }
   const state = resource.data;
+  useEffect(() => {
+    if (state?.roster_released && (state.team?.id ?? null) !== viewer.team_id)
+      void onChanged();
+  }, [state?.team?.id, state?.roster_released, viewer.team_id, onChanged]);
   useEffect(() => setError(""), [state?.attendance?.generation]);
   const eligible =
     !!state?.can_ready && !!state.attendance?.enabled && !state.ready_at;
@@ -126,7 +130,11 @@ function AuthenticatedParticipantSession({
           className="participant-attendance-bar"
           aria-label="Attendance check-in"
         >
-          <span>Attendance check-in is open</span>
+          <span>
+            {state?.attendance.late_only
+              ? "Late attendance check-in is open"
+              : "Attendance check-in is open"}
+          </span>
           <button className="text-button" onClick={openPrompt}>
             Confirm your attendance
           </button>
@@ -144,7 +152,8 @@ function AuthenticatedParticipantSession({
       )}
       {showPrompt && (
         <AttendancePrompt
-          key={state.attendance.generation}
+          key={`${state.attendance.generation}-${state.attendance.late_only}`}
+          lateOnly={state.attendance.late_only}
           busy={busy}
           error={error || resource.error}
           onDismiss={dismiss}
@@ -156,11 +165,13 @@ function AuthenticatedParticipantSession({
 }
 
 function AttendancePrompt({
+  lateOnly,
   busy,
   error,
   onDismiss,
   onConfirm,
 }: {
+  lateOnly: boolean;
   busy: boolean;
   error: string;
   onDismiss: () => void;
@@ -188,11 +199,14 @@ function AttendancePrompt({
         if (!busy) onDismiss();
       }}
     >
-      <p className="eyebrow">Attendance check-in</p>
+      <p className="eyebrow">
+        {lateOnly ? "Late attendance check-in" : "Attendance check-in"}
+      </p>
       <h2 id={titleId}>Are you here and ready to quest?</h2>
       <p id={descriptionId}>
-        Confirm that you're at the event and taking part. Your organizers will
-        use attendance to prepare the teams.
+        {lateOnly
+          ? "Confirm that you're at the event and taking part. An organizer must review your team placement before you can play."
+          : "Confirm that you're at the event and taking part. Your organizers will use attendance to prepare the teams."}
       </p>
       <p className="meta">This confirmation starts no competition clock</p>
       {error && <Notice tone="error">{error}</Notice>}

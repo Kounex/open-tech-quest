@@ -76,7 +76,7 @@ function PersonalOnboarding({ viewer }: { viewer: Viewer }) {
               {" "}
               Please see an organizer for placement
               {state.phase === "finalized"
-                ? "; team rosters are already finalized"
+                ? "; organizers can review controlled late admission when the event permits it"
                 : " in a team"}
               .
             </>
@@ -114,7 +114,12 @@ function PersonalOnboarding({ viewer }: { viewer: Viewer }) {
                     : state.can_ready
                       ? "Confirm attendance above, then see an organizer about placement before rosters are finalized."
                       : "Ask an organizer about the next late-arrival check-in window and team placement."
-                  : "The final rosters are fixed. An organizer can help you with the next step."}
+                  : state.ready_at
+                    ? "Your attendance is saved. Ask an organizer about controlled late admission into an existing team with space or an agreed named new team. You can play after placement when the event permits it."
+                    : state.can_ready
+                      ? "Confirm attendance above, then an organizer reviews your team placement before you can play."
+                      : state.attendance.reason ||
+                        "Ask an organizer about opening late check-in and arranging your team placement."}
           </p>
         </div>
       ) : (

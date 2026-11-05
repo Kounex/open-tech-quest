@@ -96,6 +96,8 @@ export interface Projector {
   room_slug: string | null;
 }
 export interface Team {
+  hidden: boolean;
+  banned: boolean;
   id: number;
   name: string;
   user_ids: number[];
@@ -165,6 +167,7 @@ declare global {
 
 export type OnboardingPhase = "check_in" | "closed" | "naming" | "finalized";
 export interface AttendanceWindow {
+  late_only: boolean;
   enabled: boolean;
   generation: number;
   opened_at: string | null;
@@ -189,6 +192,11 @@ export interface Onboarding {
   can_name: boolean;
 }
 export interface AttendanceState {
+  late_admission: {
+    allowed: boolean;
+    reason: string | null;
+    fingerprint: string | null;
+  };
   attendance: AttendanceWindow;
   phase: OnboardingPhase;
   team_size: number;

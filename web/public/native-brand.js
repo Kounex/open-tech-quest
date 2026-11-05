@@ -63,8 +63,9 @@
       notice.className = "quest-attendance-native";
       notice.setAttribute("aria-label", "Attendance check-in");
       const message = document.createElement("p");
-      message.textContent =
-        "Attendance check-in is open. Confirm in Quest that you're at the event and participating.";
+      message.textContent = state.attendance.late_only
+        ? "Late attendance check-in is open. Confirm in Quest, then ask an organizer about team admission."
+        : "Attendance check-in is open. Confirm in Quest that you're at the event and participating.";
       const actions = document.createElement("div");
       const link = document.createElement("a");
       link.href = "/quest";

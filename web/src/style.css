@@ -3365,3 +3365,77 @@ body:has(.participant-attendance-bar) {
 .user-lifecycle-table .role-change-reason {
   max-width: 200px;
 }
+
+.late-admission > .section-heading {
+  margin-top: 0;
+}
+.late-admission > p {
+  font-size: 14px;
+  color: var(--muted);
+}
+.late-admission legend {
+  font-size: 15px;
+  margin-bottom: 20px;
+}
+.late-admission .late-team-choices {
+  margin-top: 4px;
+}
+.admission-mode {
+  display: flex;
+  gap: 28px;
+  margin: 24px 0;
+}
+.admission-mode .checkbox-field {
+  font-size: 14px;
+}
+.late-admission > fieldset > .field {
+  max-width: 880px;
+}
+.event-day-guidance {
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  background: #f6f6f8;
+  margin-bottom: 24px;
+}
+.event-day-guidance h3 {
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+.event-day-guidance p {
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.event-day-guidance ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 32px;
+  padding: 0 0 0 20px;
+  margin: 0;
+  list-style-position: inside;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.managed-users-table .user-records {
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .admission-mode {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .late-admission .button {
+    white-space: normal;
+    text-align: center;
+  }
+  .event-day-guidance {
+    padding: 20px;
+  }
+  .event-day-guidance ol {
+    display: block;
+    padding-left: 0;
+  }
+  .event-day-guidance li + li {
+    margin-top: 8px;
+  }
+}

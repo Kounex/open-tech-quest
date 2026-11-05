@@ -135,6 +135,14 @@ export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
                     <th scope="row">
                       {user.name}
                       <small>{user.email}</small>
+                      <small>
+                        <a
+                          className="text-button user-records"
+                          href={`/admin/users/${user.id}`}
+                        >
+                          View account records
+                        </a>
+                      </small>
                       {user.banned && (
                         <span className="user-banned">Banned</span>
                       )}

@@ -153,7 +153,12 @@ function FullAdmin({ viewer }: { viewer: Viewer }) {
         ) : tab === "Rooms" ? (
           <RoomManagement viewer={viewer} />
         ) : tab === "Teams" ? (
-          <Attendance data={data} busy={busy} mutate={mutate} />
+          <Attendance
+            data={data}
+            busy={busy}
+            mutate={mutate}
+            onRefresh={resource.refresh}
+          />
         ) : tab === "Users" ? (
           <Users onChanged={resource.refresh} />
         ) : tab === "Awards" ? (
