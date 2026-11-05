@@ -2063,6 +2063,7 @@ class QuestIntegration(unittest.TestCase):
 
     def test_maintainer_initial_allocation_and_awards_exclude_staff(self):
         from CTFd.plugins.open_tech_quest.service import now
+        from CTFd.plugins.open_tech_quest.onboarding import eligible
         self.open_onboarding()
         self.assertEqual(self.grant_role().status_code,200)
         with self.app.app_context():
@@ -2074,10 +2075,14 @@ class QuestIntegration(unittest.TestCase):
         with self.app.app_context():
             state = QuestOnboarding.query.get(1)
             state.phase,state.grandfathered = "finalized",True
+            for user in Users.query.all():
+                if user.team_id is not None and eligible(user):
+                    db.session.add(QuestReadiness(user_id=user.id))
             for team in Teams.query.all():
                 if QuestTeamName.query.get(team.id) is None:
                     db.session.add(QuestTeamName(team_id=team.id,name_locked=True))
             db.session.commit()
+            self.assertIsNone(QuestReadiness.query.get(2))
         self.action("start")
         self.start(self.bob)
         with self.app.app_context():
