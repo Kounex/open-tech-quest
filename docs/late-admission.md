@@ -46,8 +46,8 @@ activity. Failed or concurrent duplicate requests cannot partially admit anyone
 or create a second team; refresh reveals an already-completed placement.
 
 Existing target teams must be visible, non-banned, named/locked and within saved
-capacity including all existing members. New teams must have an agreed unique
-non-placeholder display name, be within capacity, and receive native captain
+capacity including all existing members. New teams must have an agreed unique final
+display name (generated Team N names are valid), be within capacity, and receive native captain
 ownership. Record their final name lock through the actual administrator actor;
 do not falsely attribute an admin action to a participant. The confirmation
 explains that this is their final team name and placement, not a rebalance.
@@ -77,10 +77,12 @@ retain history; an admitted user with shared team activity cannot be hard-delete
 
 Morning: open registration. Afternoon: open attendance capture; existing signed-in
 and newly registered participants receive the same explicit readiness prompt.
-At cutoff: close registration and capture. If random provisional grouping has not
-been done, Preview/Apply initial allocation during team preparation. Then Move to
-attendance review → Preview attendance optimization → Apply reviewed groups →
-participant name confirmation → Finalize rosters → Start event.
+At cutoff: close registration and capture. Move to attendance review → Preview
+random teams from ready participants → Apply reviewed teams → Finalize rosters →
+Start event. Default Team 1, Team 2, etc. names are final and locked; only if
+participant naming was enabled does a member confirm a chosen name before
+finalization. No earlier provisional allocation is required. See
+[attendance-first.md](attendance-first.md).
 
 For a late arrival: reopen registration if needed; open late attendance capture;
 newcomer registers/logs in and confirms; admin admits with a reason into a team

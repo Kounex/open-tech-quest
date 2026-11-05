@@ -3,32 +3,40 @@
 ## Approved behavior
 
 Participants register their own native CTFd account with name, email and password.
-Organizers allocate the participant pool randomly into provisional teams. Default
-maximum team size is five, persisted and editable before final allocation.
-Each person confirms attendance with “I'm ready to quest”; this never starts any
-competition clock. Teammates share native team progress on their own devices.
+Morning registration collects an unassigned pool; teams form only after actual
+attendance. Each person later confirms “I'm ready to quest”; this never starts
+competition clocks. Organizers close capture and preview/apply random teams from
+ready eligible people. Default maximum size is five, persisted and editable
+before apply. Teammates share native progress on their own devices. Default final
+names are Team 1, Team 2, etc., locked against participant changes. Optional
+participant naming is controlled separately. The current contract is
+[attendance-first.md](attendance-first.md).
 
 Onboarding phases are `check_in`, `closed`, `naming`, `finalized`. Initially team preparation
-is open while attendance capture is off; see [attendance-window.md](attendance-window.md). An organizer closes it, previews attendance optimization, and explicitly
+is open while attendance capture is off; see [attendance-window.md](attendance-window.md). An organizer closes it, previews ready-only random teams, and explicitly
 applies the reviewed plan. Preview includes only ready, eligible participants,
 drops no-show assignments without deleting accounts, preserves full groups where
 possible and minimizes moves. Capacity is hard; 80% minimum is soft. Use the
 minimum number of teams, spreading a tiny tail across the last groups. Examples
 at size five: 21 => 5/4/4/4/4; 22 => 5/5/4/4/4; 11 => 4/4/3 (warning).
-Size ten, 36 may retain 10/10/8/8. Deterministic previews do not reshuffle teams.
+Size ten, 36 may retain 10/10/8/8. Stable random previews do not reshuffle an unchanged pool. Existing safe cohorts
+use minimum-move optimization; historical rosters remain protected.
 A server-bound fingerprint covers readiness, eligible participants, memberships,
 team identities and settings; stale apply fails atomically. Do not trust edited
 client groups. Empty ready pools cannot finalize. Existing native teams are
 preserved if they have activity; no history is deleted by optimization.
 
-After apply, phase is naming. Any current member can choose the final name once,
-case-insensitively unique; explicit confirmation explains that the name is fixed.
-Concurrent claims serialize; only the first succeeds. Generated Team NN
-placeholders must change; an existing meaningful provisional name may be confirmed. Organizer corrections need
-a reason and audit entry. Team rosters and names are frozen at finalization;
-competition start requires finalized rosters and all competing teams named.
-Existing live/closed events migrate without changing their eligibility or clocks.
-Existing draft accounts/teams are preserved on upgrade; no fake users are seeded.
+After apply, phase is `naming` (final team review in the UI). By default the server
+locks generated names immediately, so organizers can finalize without participant
+name input. With `allow_team_naming` enabled, any ready current member chooses a
+unique final name once. Explicit confirmation explains that it becomes fixed.
+Concurrent claims serialize; only the first succeeds. Generated names are
+provisional only in that mode. Existing chosen or organizer-corrected names do not
+reopen when the toggle is re-enabled. Disabling naming locks current names and
+retains chosen ones. Organizer corrections require a reason and audit entry.
+Naming policy is fixed after finalization. Competition start requires finalized
+rosters and final names. Existing live/closed events retain eligibility and clocks;
+upgrades preserve native accounts/teams and never seed fake users.
 
 Ready is personal, timestamped, idempotent and survives membership moves. It can
 also be recorded during an explicitly opened late attendance window, appearing
@@ -36,7 +44,7 @@ as a late arrival; before apply
 this invalidates any older preview. After apply, unassigned late arrivals appear
 in an organizer queue and may be placed manually with a reason, before finalizing,
 within capacity. If all groups are full, a reasoned create-late-team action
-creates an additional placeholder team for ready unassigned arrivals without
+creates an additional team under the saved naming policy for ready unassigned arrivals without
 reshuffling any existing group. Reopening closed check-in is allowed before apply. After apply,
 no automatic rebalance is offered, because names belong to the final groups.
 Native account bans remain available for moderation without moving frozen roster
@@ -56,18 +64,21 @@ never teammates' email addresses. Organizers retain email visibility.
 All existing envelopes/authentication/CSRF rules apply. New fields are additive.
 
 - GET `/onboarding` (authenticated participant):
-  `{phase, team_size, ready_at, late, roster_released, team, can_ready, can_name,
+  `{phase, team_size, allow_team_naming, ready_at, late, roster_released, team, can_ready, can_name,
   attendance}`. The attendance window must be open for a new confirmation.
   `team` is null before release/unassigned, otherwise
   `{id,name,name_locked,members:[{id,name,ready_at}]}`. Never expose other teams or
-  emails. `can_name` requires naming phase, ready current member, unlocked team.
+  emails. `can_name` additionally requires participant naming enabled, naming phase, ready
+  current membership and an unlocked team.
 - POST `/onboarding/ready`: no timestamp input, idempotently records own readiness;
   returns the same participant shape. Guest/admin/banned cannot check in.
 - POST `/onboarding/name`: `{name, confirm:true}`, claim once, returns own shape.
-- GET admin state gains `onboarding:{phase,team_size,ready_count,pending_count,
+- GET admin state gains `onboarding:{phase,team_size,allow_team_naming,ready_count,pending_count,
   unassigned_ready_count,unnamed_count,attendance}`. Participants gain `ready_at`, `late`,
   `banned`; teams gain `name_locked`, `ready_count` (all existing fields retained).
-- PATCH `/admin/onboarding`: `{team_size}` persisted before naming/finalized.
+- PATCH `/admin/onboarding`: nonempty subset of `{team_size,allow_team_naming}`.
+  Capacity is editable before apply; naming policy also during draft final team
+  review, before finalization.
 - POST `/admin/onboarding/action`: `{action:close_checkin|reopen_checkin|finalize}`.
   Naming also supports `{action:create_late_team,user_ids:[...],reason}` for
   capacity-limited groups of ready unassigned late arrivals.
@@ -79,12 +90,14 @@ All existing envelopes/authentication/CSRF rules apply. New fields are additive.
 - POST `/admin/onboarding/optimize`: `{preview:true}` =>
   `{fingerprint,groups:[{team_id:number|null,name,user_ids}],moves:[{user_id,
   from_team_id:number|null,to_group:number}],unassigned_user_ids,warnings}`.
-  Apply `{preview:false,fingerprint}`; server recomputes exact deterministic plan
+  Apply `{preview:false,fingerprint}`; server recomputes the exact stable random plan
   under the event write lock and verifies the fingerprint, then applies once.
   Capture must be closed for preview/apply and finalization; opening and closing
   it invalidates a previously reviewed plan.
 - Existing POST `/admin/teams/allocate` retains preview/groups contract for initial
-  random allocation during check-in only; configured capacity is authoritative.
+  allocation during check-in only, restricted to ready eligible unassigned people
+  with capture closed. The primary UI uses attendance-first preview/apply; configured
+  capacity is authoritative.
 - Existing PATCH `/admin/teams/<id>` accepts reasoned corrections. During naming,
   it may add ready unassigned late arrivals within capacity, with reason. In
   finalized phase, no membership or name edits except a reasoned admin name

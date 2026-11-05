@@ -29,12 +29,12 @@
    prize clock origins. The UI uses the organizer's browser local timezone;
    persistence and API timestamps use UTC. Leaving roster release empty
    publishes assignments immediately, so set it before assigning if needed.
-6. Ask participants to register their own account through **Register**. In
-   **Teams**, set the maximum team size (default five), preview random allocation,
-   then apply it. These are provisional groups. Set roster release beforehand if
-   assignments should remain hidden until a specific time. Each person logs in
-   and waits until the organizers open **Attendance check-in**. Confirming
-   presence then records attendance without starting room or event timers. Follow the attendance workflow below before opening.
+6. Ask participants to register their own account through **Register**. Leave
+   attendance closed while collecting morning registrations; no teams are formed.
+   In **Teams**, set the maximum size (default five). Set roster release before
+   grouping if assignments should remain hidden until a specific time. Later,
+   capture actual attendance and form teams using the workflow below. Default
+   final names are Team 1, Team 2, etc.; enable participant naming only if wanted.
 7. Open `/quest/stage` on the projector. Choose overview, room, overall or
    awards from the organizer Projector tab. Verify 1080p output and long team
    names on the actual beamer; full-screen overview uses two panels of 25.
@@ -46,12 +46,13 @@
 Open registration in the morning and attendance capture when actual presence
 should be confirmed. Signed-in, returning and newly registered users receive
 the same explicit prompt while capture is open. At cutoff close registration
-and capture. If provisional random allocation has not been performed, Preview /
-Apply initial allocation while still in Team preparation. Then **Move to
-attendance review → Preview attendance optimization → Apply reviewed groups**.
-Only checked-in eligible people enter final grouping. Participants confirm their
-team names; organizers **Finalize rosters**, then **Start event**. Closing the
-windows alone does not allocate or finalize teams.
+and capture. Then **Move to attendance review → Preview teams from checked-in
+participants → Apply reviewed teams → Finalize rosters → Start event**. The
+preview randomly groups only ready eligible people; morning registration never
+requires initial allocation. Default generated names are already final and locked.
+If **Let participants choose team names** is enabled, ready members choose their
+unique final name once before finalization. Closing the windows alone never
+forms or finalizes teams. See [attendance-first.md](attendance-first.md).
 
 After finalization, organizers may open a **late-only attendance window** for
 unassigned newcomers and reopen registration if needed. A newcomer registers /
@@ -102,33 +103,36 @@ The two controls are separate: registration creates accounts; attendance records
 that someone is present and taking part. Capture starts off on installation and
 upgrade. It never starts event or room timers.
 
-1. In **Teams**, set maximum team size (default five) and allocate the pool into
-   random provisional groups. Set roster release beforehand if assignments
-   should remain private. Early registrants wait with no ready confirmation.
+1. During registration, set maximum team size (default five); leave everyone
+   unassigned. **Let participants choose team names** defaults off. With it off,
+   generated Team 1, Team 2, etc. names are final and participant-locked. Set
+   roster release beforehand if assignments should remain private.
 2. At the venue, open **Attendance check-in** from **Event** or **Teams**.
    Unconfirmed participants on active Quest pages get an automatic dialog within
    five seconds. Returning from a background tab checks immediately. Someone
    registering or logging in during capture sees it immediately. They explicitly
    press **I'm ready to quest**; opening the dialog never checks anyone in.
-3. Close attendance when the capture window ends. Old/stale pages cannot add
-   confirmations afterwards. Existing confirmations and timestamps stay recorded.
-   Use the team-preparation action to review attendance, then **Preview attendance
-   optimization**. Inspect sizes, individual moves, missing-user removals and any
-   unavoidable small-team warning. Capacity is a hard maximum; the optimizer
-   preserves groups where possible and avoids a tiny last team.
-4. Apply the reviewed plan. Changed attendance, memberships, settings or an
-   intervening attendance opening make the plan stale. Accounts are retained
-   when absent users are unassigned. Automatic reshuffling ends at naming.
-5. Any ready member confirms the team's final unique name once. The first
-   confirmation wins across devices. Generated Team NN names must change.
-6. For late arrivals, explicitly reopen **Attendance check-in** in review or
-   naming. New confirmations appear in the ready, unassigned queue. Place them
-   with a reason in a group with capacity, or create an additional team. Close
-   capture again before reviewing/applying a plan or finalizing rosters.
-7. Finalize when capture is closed, every ready participant is assigned and
-   active teams are named. Membership then stays fixed. Start the competition
-   separately in Event after authoring real challenges and removing any demo.
-   Participants still explicitly start each room's clock.
+3. When enough people are present or it is time to proceed, **Move to attendance
+   review**, closing capture. Stale pages cannot add confirmations afterwards.
+   Preview teams from checked-in participants. Inspect sizes, assignments and
+   unavoidable small-team warnings. Capacity is a hard maximum; existing 80% tail
+   balancing avoids a tiny last team. Unconfirmed registrations are excluded.
+4. Apply exactly the reviewed teams. Repeated previews of unchanged state remain
+   identical; changed attendance, membership, naming policy, capacity or window
+   generation requires another preview. No-show accounts remain intact and
+   unassigned. Existing historical cohorts stay protected.
+5. By default, names are already final and users cannot change them. If participant
+   naming is enabled, any ready teammate chooses the unique final name once.
+   Enabling during team review opens only generated/unclaimed names; disabling
+   locks current names and retains chosen ones. The policy freezes at finalization.
+6. For arrivals during review, explicitly reopen attendance capture. New
+   confirmations appear in the ready, unassigned queue. Before apply, close capture
+   and preview again. After apply, place them with a reason in a team with space
+   or create an additional team following the saved naming policy. Close capture
+   again before finalizing.
+7. Finalize when capture is closed, every ready person is assigned and teams have
+   final names. Start separately in Event after authoring real challenges and
+   removing any demo. Participants explicitly start each room's clock.
 
 Participants may dismiss an opening's prompt with **Not yet** and use its visible
 check-in action later. Reopening can prompt still-unconfirmed people again;
