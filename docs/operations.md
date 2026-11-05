@@ -54,8 +54,11 @@ membership so teammates’ solves, clocks and prizes cannot be silently changed.
 Unused provisional members can be removed before optimization; captain ownership
 is repaired and team records are retained. Authored challenges remain intact.
 
-Use **Deactivate account** to revoke access while retaining competition history.
-Reactivation never creates attendance or a team assignment. These operations and
+Use **Ban account** to revoke access and exclude that user’s solves from counted
+team progress while retaining all history for investigation. Teammates can
+re-solve affected challenges; **Unban account** restores eligible retained solves
+without duplicate credit and never creates attendance or team assignment.
+Published contribution changes require unpublishing first. These operations and
 native administration use the same lifecycle rules and invalidate outstanding
 allocation reviews; preview again when asked. See [user-lifecycle.md](user-lifecycle.md).
 

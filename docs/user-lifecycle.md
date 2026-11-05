@@ -25,14 +25,16 @@ CTFd remains the account authority; no new identity provider or secret is needed
   detaches provisional membership, repairs the captain and retains the team.
   Clear credentials/tokens/session caches and invalidate proposal fingerprints.
   Already-deleted IDs must not delete a newly registered account through ID reuse.
-- Add **Deactivate account / Reactivate account** using native `banned` status
-  for participant/maintainer accounts. This denies access without erasing scores
-  or membership history. Pre-optimization deactivation may detach only an unused
-  provisional assignment and clears readiness. Later/activity-bearing membership
-  and recorded readiness remain historical, with no automatic reshuffle.
-  Reactivation never creates a ready record, grant or team assignment; normal
-  phase rules apply. Keep maintainer grants while inactive so revocation of
-  access never accidentally reclassifies staff solves or makes staff a player.
+- Additional approved steering: **Ban account / Unban account** uses native
+  `banned` status and excludes that user’s solve contributions from the team,
+  progression and prizes while retaining every original database entry. User
+  explicitly confirmed teammates can re-solve affected challenges. See
+  [contribution-moderation.md](contribution-moderation.md) for recovery semantics.
+  Pre-optimization banning may detach only an unused provisional assignment and
+  clears readiness. Later/activity-bearing membership and recorded readiness
+  remain historical, with no automatic reshuffle. Unbanning never creates a
+  ready record, grant or team assignment; normal phase rules apply. Keep
+  maintainer grants while banned so moderation never makes staff a player.
 - Full administrator accounts are read-only in these new controls. Native CTFd
   operations must share the same safety policy: never self-delete/self-lock out,
   never remove/deactivate/demote the last usable admin, never erase history or
@@ -89,6 +91,7 @@ verified in-scope failures with real consequences; zero findings is valid.
 Exercise unused/provisional/ready/captain/team-member/finalized/solved accounts,
 demote/re-promote, delete/deactivate/reactivate, native bypasses, revoked sessions,
 stale previews and wait-boundary races on SQLite/MariaDB. Verify a teammate's
-solves/clock/rank remain intact when deleting is refused or access is revoked.
+solves/clock/rank remain intact when deleting is refused. Banning removes only the banned user’s counted contributions;
+teammate contributions and all raw history remain, with legitimate re-solves.
 Production verification is read-only; never delete, demote or ban actual users
 for QA. Back up privately before deploying the validated image through GitOps.
