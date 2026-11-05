@@ -99,3 +99,10 @@ closed the dialog through polling and rejected a stale direct request. Both
 chosen names remained unique and locked. The organizer screen's WCAG A/AA audit
 reported zero violations and zero incomplete checks. No production users, teams,
 attendance or competition state were modified for these checks.
+
+The optional-naming journey also finalized and started successfully. A normal
+native challenge solve was shared with a randomly assigned teammate. Restart
+preserved naming policy, chosen names, readiness, memberships, solve credit,
+starts and award/ranking values; only response-generation timestamps advanced.
+The Teams view fit a 390px viewport without document-wide horizontal overflow.
+All owned disposable browser/database resources were removed after verification.

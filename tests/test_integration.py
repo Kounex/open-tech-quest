@@ -433,8 +433,14 @@ class QuestIntegration(unittest.TestCase):
         self.assertEqual(result.status_code, 200, result.get_data(as_text=True))
         with self.app.app_context():
             QuestOnboarding.query.get(1).phase = "finalized"
-            db.session.add_all([QuestTeamName(team_id=self.team_id,name_locked=True),QuestTeamName(team_id=self.other_id,name_locked=True)])
+            for team_id in (self.team_id, self.other_id):
+                lock = QuestTeamName.query.get(team_id)
+                if lock is None:
+                    lock = QuestTeamName(team_id=team_id)
+                    db.session.add(lock)
+                lock.name_locked = True
             db.session.commit()
+            self.assertEqual(QuestTeamName.query.get(self.team_id).claimed_by, 1)
         self.action("start")
         payload = {"name": "Renamed team", "excluded": True, "reason": "Staff team"}
         result = self.post(self.admin, endpoint, payload, "PATCH")

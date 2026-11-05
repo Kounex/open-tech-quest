@@ -46,8 +46,8 @@
 Open registration in the morning and attendance capture when actual presence
 should be confirmed. Signed-in, returning and newly registered users receive
 the same explicit prompt while capture is open. At cutoff close registration
-and capture. Then **Move to attendance review → Preview teams from checked-in
-participants → Apply reviewed teams → Finalize rosters → Start event**. The
+and capture. Then **Move to attendance review → Preview checked-in teams →
+Apply reviewed teams → Finalize rosters → Start event**. The
 preview randomly groups only ready eligible people; morning registration never
 requires initial allocation. Default generated names are already final and locked.
 If **Let participants choose team names** is enabled, ready members choose their
