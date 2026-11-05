@@ -3347,3 +3347,21 @@ body:has(.participant-attendance-bar) {
     padding: 16px 20px;
   }
 }
+
+.user-lifecycle-table table {
+  min-width: 1120px;
+}
+.user-lifecycle-table th[scope="row"] {
+  min-width: 180px;
+  max-width: 240px;
+  overflow-wrap: anywhere;
+}
+.user-lifecycle-table .user-control-cell {
+  min-width: 180px;
+}
+.user-lifecycle-table .user-delete-cell {
+  border-left: 1px solid var(--line);
+}
+.user-lifecycle-table .role-change-reason {
+  max-width: 200px;
+}

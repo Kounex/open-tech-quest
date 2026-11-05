@@ -8,12 +8,39 @@ const roleNames = {
   maintainer: "Challenge maintainer",
   administrator: "Administrator",
 };
+type UserAction = {
+  path: string;
+  method: "PATCH" | "DELETE";
+  body: Record<string, unknown>;
+  message: string;
+};
+
 export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
   const resource = useResource<{ users: ManagedUser[] }>("/admin/users", 15000);
   const [query, setQuery] = useState(""),
     [role, setRole] = useState("all"),
     [busy, setBusy] = useState<number | null>(null),
-    [message, setMessage] = useState("");
+    [message, setMessage] = useState(""),
+    [error, setError] = useState("");
+  async function perform(user: ManagedUser, action: UserAction) {
+    setBusy(user.id);
+    setMessage("");
+    setError("");
+    try {
+      await request(`/admin/users/${user.id}${action.path}`, action.method, {
+        ...action.body,
+        confirm: true,
+        identity: user.identity,
+      });
+      await Promise.all([resource.refresh(), onChanged()]);
+      setMessage(action.message);
+    } catch (error) {
+      setError((error as Error).message);
+      throw error;
+    } finally {
+      setBusy(null);
+    }
+  }
   if (!resource.data)
     return resource.error ? (
       <Notice tone="error" retry={() => void resource.refresh()}>
@@ -33,10 +60,11 @@ export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
     <>
       <div className="section-heading">
         <div>
-          <h2>Users and room access</h2>
+          <h2>Users and account access</h2>
           <p>
-            Participants use personal accounts. Challenge maintainers prepare
-            room content; administrators manage the whole event.
+            Manage participant and challenge maintainer accounts. Deactivation
+            preserves competition history; unused accounts can be deleted when
+            the server confirms they are safe to remove.
           </p>
         </div>
       </div>
@@ -67,6 +95,11 @@ export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
         </span>
       </div>
       {message && <Notice tone="success">{message}</Notice>}
+      {error && (
+        <Notice tone="error" retry={() => void resource.refresh()}>
+          {error}
+        </Notice>
+      )}
       {resource.error && (
         <Notice tone="error" retry={() => void resource.refresh()}>
           Showing saved accounts. {resource.error}
@@ -78,7 +111,7 @@ export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
           own native account.
         </Empty>
       ) : (
-        <div className="managed-users-table">
+        <div className="managed-users-table user-lifecycle-table">
           <table>
             <thead>
               <tr>
@@ -86,19 +119,23 @@ export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
                 <th scope="col">Role</th>
                 <th scope="col">Team and attendance</th>
                 <th scope="col">Room access</th>
+                <th scope="col">Account access</th>
+                <th scope="col">Permanent removal</th>
               </tr>
             </thead>
             <tbody>
               {users.map((user) => {
                 const target =
                   user.role === "maintainer" ? "participant" : "maintainer";
+                const targetActive = user.banned;
+                const disabled = busy !== null || !user.identity;
                 return (
-                  <tr key={user.id}>
+                  <tr key={`${user.id}-${user.identity}`}>
                     <th scope="row">
                       {user.name}
                       <small>{user.email}</small>
                       {user.banned && (
-                        <span className="user-banned">Banned</span>
+                        <span className="user-banned">Inactive</span>
                       )}
                     </th>
                     <td>{roleNames[user.role]}</td>
@@ -112,54 +149,42 @@ export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
                             : "Not checked in"}
                       </small>
                     </td>
-                    <td>
-                      {user.role === "administrator" ? (
-                        <>
-                          <span className="meta">
-                            Native administrator · Read-only here
-                          </span>
-                          <a
-                            className="text-button"
-                            href={`/admin/users/${user.id}`}
-                          >
-                            Manage in CTFd
-                          </a>
-                        </>
-                      ) : (
-                        <>
+                    {user.role === "administrator" ? (
+                      <td colSpan={3}>
+                        <span className="meta">
+                          Native administrator · Read-only here
+                        </span>
+                        <a
+                          className="text-button"
+                          href={`/admin/users/${user.id}`}
+                        >
+                          Manage in CTFd
+                        </a>
+                      </td>
+                    ) : (
+                      <>
+                        <td className="user-control-cell">
                           <Confirm
-                            key={`${user.id}-${user.role}-${user.can_change_role}`}
+                            key={`role-${user.identity}-${user.role}-${user.can_change_role}`}
                             label={
                               target === "maintainer"
                                 ? "Make maintainer"
-                                : "Remove maintainer access"
+                                : "Return to participant"
                             }
                             description={
                               target === "maintainer"
                                 ? `Give ${user.name} permission to configure rooms and author challenges? This makes them staff, clears attendance and removes unused provisional team membership. They will not participate in teams or awards.`
-                                : `Return ${user.name} to Participant? Room management access ends immediately. The account remains unassigned and unconfirmed; ordinary attendance and roster rules apply.`
+                                : `Return ${user.name} to the Participant role? Maintainer access ends immediately. The account will be unassigned and unconfirmed, and must follow the current attendance and roster rules before joining the quest.`
                             }
-                            disabled={busy !== null || !user.can_change_role}
-                            onConfirm={async () => {
-                              setBusy(user.id);
-                              setMessage("");
-                              try {
-                                await request(
-                                  `/admin/users/${user.id}/role`,
-                                  "PATCH",
-                                  { role: target, confirm: true },
-                                );
-                                await Promise.all([
-                                  resource.refresh(),
-                                  onChanged(),
-                                ]);
-                                setMessage(
-                                  `${user.name} is now ${target === "maintainer" ? "a challenge maintainer" : "a participant"}`,
-                                );
-                              } finally {
-                                setBusy(null);
-                              }
-                            }}
+                            disabled={disabled || !user.can_change_role}
+                            onConfirm={() =>
+                              perform(user, {
+                                path: "/role",
+                                method: "PATCH",
+                                body: { role: target },
+                                message: `${user.name} is now ${target === "maintainer" ? "a challenge maintainer" : "a participant"}`,
+                              })
+                            }
                           />
                           {!user.can_change_role && (
                             <small className="role-change-reason">
@@ -167,9 +192,63 @@ export function Users({ onChanged }: { onChanged: () => Promise<void> }) {
                                 "Role changes are not available for this account"}
                             </small>
                           )}
-                        </>
-                      )}
-                    </td>
+                        </td>
+                        <td className="user-control-cell">
+                          <Confirm
+                            key={`access-${user.identity}-${user.banned}-${user.can_set_active}`}
+                            label={
+                              targetActive
+                                ? "Reactivate account"
+                                : "Deactivate account"
+                            }
+                            description={
+                              targetActive
+                                ? `Reactivate ${user.name}'s account? Access resumes under its current role. This creates no new attendance confirmation or team assignment; existing history stays saved.`
+                                : `Deactivate ${user.name}'s account? Access is blocked immediately and competition history is preserved. An unused provisional team assignment and check-in may be cleared before roster optimization. Established roster membership and historical attendance remain saved.`
+                            }
+                            disabled={disabled || !user.can_set_active}
+                            danger={!targetActive}
+                            onConfirm={() =>
+                              perform(user, {
+                                path: "/access",
+                                method: "PATCH",
+                                body: { active: targetActive },
+                                message: `${user.name}'s account ${targetActive ? "reactivated" : "deactivated"}`,
+                              })
+                            }
+                          />
+                          {!user.can_set_active && (
+                            <small className="role-change-reason">
+                              {user.access_reason ||
+                                "Account access cannot be changed here"}
+                            </small>
+                          )}
+                        </td>
+                        <td className="user-control-cell user-delete-cell">
+                          <Confirm
+                            key={`delete-${user.identity}-${user.can_delete}`}
+                            label="Delete account"
+                            description={`Permanently delete ${user.name}'s unused account? This cannot be undone. Credentials, attendance and maintainer access for this account are removed. Provisional membership is detached while the team and authored challenges remain. Accounts with competition history or frozen roster membership cannot be deleted.`}
+                            disabled={disabled || !user.can_delete}
+                            danger
+                            onConfirm={() =>
+                              perform(user, {
+                                path: "",
+                                method: "DELETE",
+                                body: {},
+                                message: `${user.name}'s account deleted; team and authored challenges preserved`,
+                              })
+                            }
+                          />
+                          {!user.can_delete && (
+                            <small className="role-change-reason">
+                              {user.delete_reason ||
+                                "This account cannot be deleted"}
+                            </small>
+                          )}
+                        </td>
+                      </>
+                    )}
                   </tr>
                 );
               })}

@@ -154,6 +154,7 @@ export interface Challenge {
   connection_info?: string;
 }
 export interface Allocation {
+  fingerprint: string;
   groups: { name: string; user_ids: number[] }[];
 }
 declare global {
@@ -207,6 +208,11 @@ export interface AttendancePlan {
 }
 
 export interface ManagedUser {
+  identity: string;
+  can_delete: boolean;
+  delete_reason: string | null;
+  can_set_active: boolean;
+  access_reason: string | null;
   id: number;
   name: string;
   email: string;

@@ -478,18 +478,24 @@ function InitialAllocation({ data, busy, mutate }: Props) {
           </div>
           {preview.groups.length > 0 && (
             <Confirm
+              key={preview.fingerprint}
               label="Apply initial allocation"
               description={`Create the ${preview.groups.length} provisional teams shown above. Participants may still be moved when attendance is reviewed; this is not the final grouping or team naming step.`}
               disabled={
                 busy ||
                 loading ||
+                !preview.fingerprint ||
                 preview.groups.some((group) => !group.name.trim())
               }
               onConfirm={async () => {
                 await mutate(
                   "/admin/teams/allocate",
                   "POST",
-                  { preview: false, groups: preview.groups },
+                  {
+                    preview: false,
+                    groups: preview.groups,
+                    fingerprint: preview.fingerprint,
+                  },
                   "Initial provisional teams allocated",
                 );
                 setPreview(null);
