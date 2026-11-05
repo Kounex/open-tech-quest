@@ -147,3 +147,12 @@ generation zero, one native administrator and no participants, teams or readines
 records. No production grouping or naming actions were used for QA.
 Private pre-upgrade SQL/uploads backup:
 `/root/ocp-backups/ctfd/pre-attendance-first-20261105T163847Z/`.
+
+## Organization migration — 2026-11-05
+
+Release **0.1.16** completes the move to `open-tech-quest/ctfd-plugin` and its
+public organization GHCR package. Pre-transfer and organization CI passed,
+anonymous full-image pull succeeded, and GitOps deployed the tested digest.
+Argo is Synced / Healthy and read-only live checks preserved event data/settings.
+See the [migration verification record](org-migration.md#verified-completion--2026-11-05)
+for source, image, CI/GitOps references, preserved history and rollback details.
