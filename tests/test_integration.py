@@ -50,6 +50,7 @@ class QuestIntegration(unittest.TestCase):
             assert Challenges.query.count() == Solves.query.count() == 0
             assert QuestOnboarding.query.get(1).phase == "check_in"
             assert QuestOnboarding.query.get(1).team_size == 5
+            assert QuestOnboarding.query.get(1).allow_team_naming is False
             assert QuestOnboarding.query.get(1).attendance_open is False
             assert QuestOnboarding.query.get(1).attendance_generation == 0
             assert QuestReadiness.query.count() == 0
@@ -290,6 +291,7 @@ class QuestIntegration(unittest.TestCase):
             QuestOnboarding.query.get(1).team_size = 3
             for i in range(5, 12):
                 db.session.add(Users(id=i, name=f"Player {i}", email=f"p{i}@example.test", password="test-only"))
+                db.session.add(QuestReadiness(user_id=i))
             db.session.commit()
         response = self.post(self.admin, PREFIX + "/admin/teams/allocate", {"team_size": 3, "preview": True})
         groups = response.json["data"]["groups"]
@@ -487,6 +489,7 @@ class QuestIntegration(unittest.TestCase):
             self.skipTest("Production row-lock serialization is exercised on MariaDB")
         with self.app.app_context():
             db.session.add(Users(id=5, name="Waiting player", email="waiting@example.test", password="test-only"))
+            db.session.add(QuestReadiness(user_id=5))
             db.session.commit()
         from CTFd.plugins.open_tech_quest.guards import event as original_event
         entered, release = threading.Event(), threading.Event()
@@ -849,10 +852,11 @@ class QuestIntegration(unittest.TestCase):
             self.assertEqual(QuestEvent.query.get(1).status, "draft")
             self.assertIsNotNone(original_active_batch())
 
-    def open_onboarding(self, capacity=5):
+    def open_onboarding(self, capacity=5, allow_team_naming=True):
         with self.app.app_context():
             state = QuestOnboarding.query.get(1)
             state.phase, state.team_size, state.grandfathered = "check_in", capacity, False
+            state.allow_team_naming = allow_team_naming
             state.applied_at, state.finalized_at = None, None
             QuestReadiness.query.delete()
             QuestTeamName.query.delete()
@@ -1178,14 +1182,19 @@ class QuestIntegration(unittest.TestCase):
         for client in (self.alice,self.bob,self.carol):
             self.ready_user(client)
         self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
-        self.apply_attendance(self.attendance_plan())
-        own = self.bob.get(PREFIX+"/onboarding").json["data"]
+        plan = self.attendance_plan()
+        generated = next(g for g in plan["groups"] if g["team_id"] is None)
+        retained = next(g for g in plan["groups"] if g["team_id"] is not None)
+        generated_member = self.client(generated["user_ids"][0])
+        retained_member = self.client(retained["user_ids"][0])
+        self.apply_attendance(plan)
+        own = generated_member.get(PREFIX+"/onboarding").json["data"]
         self.assertTrue(own["team"]["name"].startswith("Team "))
-        response = self.post(self.bob,PREFIX+"/onboarding/name",{"name":own["team"]["name"].swapcase()+" ","confirm":True})
+        response = self.post(generated_member,PREFIX+"/onboarding/name",{"name":own["team"]["name"].swapcase()+" ","confirm":True})
         self.assertEqual(response.status_code,400)
         self.assertIn("placeholder",response.json["error"])
-        alice = self.alice.get(PREFIX+"/onboarding").json["data"]
-        self.assertEqual(self.post(self.alice,PREFIX+"/onboarding/name",{"name":alice["team"]["name"],"confirm":True}).status_code,200)
+        retained = retained_member.get(PREFIX+"/onboarding").json["data"]
+        self.assertEqual(self.post(retained_member,PREFIX+"/onboarding/name",{"name":retained["team"]["name"],"confirm":True}).status_code,200)
 
     def test_onboarding_hidden_team_names_remain_reserved_when_creating_replacement(self):
         self.open_onboarding()
@@ -1196,12 +1205,12 @@ class QuestIntegration(unittest.TestCase):
                 db.session.execute(Users.__table__.insert(), {"id":uid,"name":f"Attendee {uid}","email":f"attendee{uid}@example.test","password":password,"type":"user"})
             teams = Teams.query.order_by(Teams.id).all()
             for index in range(3):
-                team = Teams(name=f"Team {index+3:02}")
+                team = Teams(name=f"Team {index+3}")
                 db.session.add(team)
                 db.session.flush()
                 teams.append(team)
             for index,team in enumerate(teams,1):
-                team.name = f"Team {index:02}"
+                team.name = f"Team {index}"
             hidden_id = teams[0].id
             for index,uid in enumerate(range(2,23)):
                 Users.query.get(uid).team_id = teams[index//5].id
@@ -1212,14 +1221,14 @@ class QuestIntegration(unittest.TestCase):
         plan = self.attendance_plan()
         fresh = [group for group in plan["groups"] if group["team_id"] is None]
         self.assertEqual(len(fresh),1)
-        self.assertEqual(fresh[0]["name"],"Team 06")
+        self.assertEqual(fresh[0]["name"],"Team 6")
         self.apply_attendance(plan)
         with self.app.app_context():
             self.assertTrue(Teams.query.get(hidden_id).hidden)
-            self.assertEqual(Teams.query.get(hidden_id).name,"Team 01")
+            self.assertEqual(Teams.query.get(hidden_id).name,"Team 1")
             self.assertEqual(Teams.query.count(),6)
             self.assertEqual(Users.query.filter(Users.type=="user",Users.team_id.isnot(None)).count(),21)
-            self.assertEqual(Teams.query.filter_by(name="Team 06").count(),1)
+            self.assertEqual(Teams.query.filter_by(name="Team 6").count(),1)
             self.assertEqual(QuestReadiness.query.count(),21)
 
     def test_registration_toggle_authorization_csrf_strict_body_and_audit(self):
@@ -2068,6 +2077,7 @@ class QuestIntegration(unittest.TestCase):
         self.assertEqual(self.grant_role().status_code,200)
         with self.app.app_context():
             db.session.add(Users(id=5,name="New participant",email="new@example.test",password="test-only"))
+            db.session.add(QuestReadiness(user_id=5))
             db.session.commit()
         plan = self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":True}).json["data"]
         self.assertEqual([uid for group in plan["groups"] for uid in group["user_ids"]],[5])
@@ -2077,10 +2087,14 @@ class QuestIntegration(unittest.TestCase):
             state.phase,state.grandfathered = "finalized",True
             for user in Users.query.all():
                 if user.team_id is not None and eligible(user):
-                    db.session.add(QuestReadiness(user_id=user.id))
+                    if QuestReadiness.query.get(user.id) is None:
+                        db.session.add(QuestReadiness(user_id=user.id))
             for team in Teams.query.all():
-                if QuestTeamName.query.get(team.id) is None:
+                lock = QuestTeamName.query.get(team.id)
+                if lock is None:
                     db.session.add(QuestTeamName(team_id=team.id,name_locked=True))
+                else:
+                    lock.name_locked = True
             db.session.commit()
             self.assertIsNone(QuestReadiness.query.get(2))
         self.action("start")
@@ -2219,12 +2233,14 @@ class QuestIntegration(unittest.TestCase):
         self.open_onboarding()
         with self.app.app_context():
             db.session.add(Users(id=5,name="Replaceable",email="replaceable@example.test",password="old-password"))
+            db.session.add(QuestReadiness(user_id=5))
             db.session.commit()
         old = self.managed_account(5)
         plan = self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":True}).json["data"]
         self.assertEqual(self.account_action(5,"delete").status_code,200)
         with self.app.app_context():
             db.session.add(Users(id=5,name="Replaceable",email="replaceable@example.test",password="new-password"))
+            db.session.add(QuestReadiness(user_id=5))
             db.session.commit()
         new = self.managed_account(5)
         self.assertNotEqual(new["identity"],old["identity"])
@@ -3031,7 +3047,7 @@ class QuestIntegration(unittest.TestCase):
             db.session.commit()
         self.assertEqual(self.admit([5],team_id=self.team_id).status_code,409)
         self.assertEqual(self.admit([5],team_id=999999).status_code,404)
-        for name in ("Team 01","TEAM01","RED TEAM",None,""):
+        for name in ("RED TEAM",None,""):
             result=self.admit([5],new_team_name=name)
             self.assertIn(result.status_code,(400,409),result.get_data(as_text=True))
         with self.app.app_context():
@@ -3233,3 +3249,303 @@ class QuestIntegration(unittest.TestCase):
             state=QuestOnboarding.query.get(1)
             state.phase="naming"
             self.assertIsNotNone(onboarding.finalization_reason())
+
+    def formation_pool(self, count=21, capacity=5, naming=False):
+        self.open_onboarding(capacity=capacity,allow_team_naming=naming)
+        with self.app.app_context():
+            for user in Users.query.filter_by(type="user").all():
+                user.team_id=None
+            db.session.flush()
+            Teams.query.delete()
+            password=Users.query.get(2).password
+            for uid in range(5,count+2):
+                db.session.execute(Users.__table__.insert(),{"id":uid,"name":f"Attendee {uid}","email":f"formation{uid}@example.test","password":password,"type":"user","verified":True})
+            db.session.commit()
+        return list(range(2,count+2))
+
+    def naming_policy(self, enabled):
+        response=self.post(self.admin,PREFIX+"/admin/onboarding",{"allow_team_naming":enabled},"PATCH")
+        self.assertEqual(response.status_code,200,response.get_data(as_text=True))
+        return response.json["data"]
+
+    def form_ready_pool(self, ids):
+        self.attendance_window(True)
+        for uid in ids:
+            self.ready_user(self.client(uid))
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        return self.attendance_plan()
+
+    def test_formation_default_morning_registration_ready_only_random_stable_apply_and_fixed_names(self):
+        ids=self.formation_pool(21)
+        early=self.app.test_client()
+        self.assertEqual(early.get("/register").status_code,200)
+        with early.session_transaction() as session:
+            nonce=session["nonce"]
+        self.assertEqual(early.post("/register",data={"nonce":nonce,"name":"Morning signup","email":"morning@example.test","password":"test-only"}).status_code,302)
+        self.assertFalse(early.get(PREFIX+"/onboarding").json["data"]["allow_team_naming"])
+        with self.app.app_context():
+            self.assertEqual(Teams.query.count(),0)
+            self.assertEqual(QuestReadiness.query.count(),0)
+            self.assertEqual(QuestStart.query.count(),0)
+            self.assertIsNone(QuestEvent.query.get(1).start_at)
+        self.attendance_window(True)
+        for uid in ids:
+            self.ready_user(self.client(uid))
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":True}).status_code,409)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        plan=self.attendance_plan()
+        self.assertEqual(plan,self.attendance_plan())
+        self.assertEqual([len(g["user_ids"]) for g in plan["groups"]],[5,4,4,4,4])
+        self.assertEqual([g["name"] for g in plan["groups"]],["Team 1","Team 2","Team 3","Team 4","Team 5"])
+        placed=[uid for g in plan["groups"] for uid in g["user_ids"]]
+        self.assertEqual(set(placed),set(ids))
+        self.assertNotEqual(placed,sorted(ids))
+        self.assertTrue(any(max(g["user_ids"])-min(g["user_ids"])+1>len(g["user_ids"]) for g in plan["groups"]))
+        with self.app.app_context():
+            times={r.user_id:r.ready_at for r in QuestReadiness.query.all()}
+            self.assertEqual(Teams.query.count(),0)
+        self.apply_attendance(plan)
+        state=self.admin.get(PREFIX+"/admin/state").json["data"]["onboarding"]
+        self.assertFalse(state["allow_team_naming"])
+        self.assertEqual(state["unnamed_count"],0)
+        with self.app.app_context():
+            for group in plan["groups"]:
+                team=Teams.query.filter_by(name=group["name"]).one()
+                self.assertEqual({u.id for u in team.members},set(group["user_ids"]))
+                self.assertEqual(team.captain_id,group["user_ids"][0])
+                lock=QuestTeamName.query.get(team.id)
+                self.assertTrue(lock.name_locked)
+                self.assertTrue(lock.auto_named)
+                self.assertIsNone(lock.claimed_by)
+            self.assertEqual({r.user_id:r.ready_at for r in QuestReadiness.query.all()},times)
+            self.assertEqual(QuestStart.query.count(),0)
+            self.assertEqual(Solves.query.count(),0)
+            self.assertIsNone(QuestEvent.query.get(1).start_at)
+        member=self.client(placed[0])
+        self.assertFalse(member.get(PREFIX+"/onboarding").json["data"]["can_name"])
+        self.assertEqual(self.post(member,PREFIX+"/onboarding/name",{"name":"Not allowed","confirm":True}).status_code,409)
+        self.assertEqual(self.onboarding_action("finalize").status_code,200)
+        self.action("start")
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/onboarding",{"allow_team_naming":True},"PATCH").status_code,409)
+
+    def test_formation_ready_tail_sizes_staff_and_bans_excluded_without_clock_changes(self):
+        ids=self.formation_pool(25)
+        with self.app.app_context():
+            db.session.add(QuestMaintainer(user_id=25,previous_hidden=False))
+            Users.query.get(26).banned=True
+            db.session.commit()
+        self.attendance_window(True)
+        for uid in ids[:21]:
+            self.ready_user(self.client(uid))
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        plan21=self.attendance_plan()
+        self.assertEqual(sorted(len(g["user_ids"]) for g in plan21["groups"]),[4,4,4,4,5])
+        self.attendance_window(True)
+        self.ready_user(self.client(ids[21]))
+        self.attendance_window(False)
+        plan22=self.attendance_plan()
+        self.assertEqual(sorted(len(g["user_ids"]) for g in plan22["groups"]),[4,4,4,5,5])
+        self.assertNotEqual(plan21["fingerprint"],plan22["fingerprint"])
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/onboarding/optimize",{"preview":False,"fingerprint":plan21["fingerprint"]}).status_code,409)
+        with self.app.app_context():
+            QuestReadiness.query.filter(~QuestReadiness.user_id.in_(ids[:11])).delete(synchronize_session=False)
+            db.session.commit()
+        plan11=self.attendance_plan()
+        self.assertEqual(sorted(len(g["user_ids"]) for g in plan11["groups"]),[3,4,4])
+        self.assertTrue(plan11["warnings"])
+        self.assertNotIn(25,plan11["unassigned_user_ids"])
+        self.assertNotIn(26,plan11["unassigned_user_ids"])
+        with self.app.app_context():
+            self.assertEqual(Teams.query.count(),0)
+            self.assertEqual(QuestStart.query.count(),0)
+            self.assertEqual(Solves.query.count(),0)
+
+    def test_formation_optional_once_naming_toggle_and_admin_correction_provenance(self):
+        ids=self.formation_pool(11)
+        plan=self.form_ready_pool(ids)
+        self.apply_attendance(plan)
+        self.naming_policy(True)
+        first_group=plan["groups"][0]
+        claimant=self.client(first_group["user_ids"][-1])
+        with self.app.app_context():
+            first=Teams.query.filter_by(name=first_group["name"]).one()
+            self.assertNotEqual(first.captain_id,first_group["user_ids"][-1])
+        self.assertTrue(claimant.get(PREFIX+"/onboarding").json["data"]["can_name"])
+        self.assertEqual(self.post(claimant,PREFIX+"/onboarding/name",{"name":"Ready Rockets","confirm":True}).status_code,200)
+        self.naming_policy(False)
+        self.naming_policy(True)
+        self.assertFalse(claimant.get(PREFIX+"/onboarding").json["data"]["can_name"])
+        with self.app.app_context():
+            chosen=Teams.query.filter_by(name="Ready Rockets").one()
+            self.assertFalse(QuestTeamName.query.get(chosen.id).auto_named)
+            second=Teams.query.filter_by(name=plan["groups"][1]["name"]).one()
+            second_id=second.id
+        self.assertTrue(self.client(plan["groups"][1]["user_ids"][0]).get(PREFIX+"/onboarding").json["data"]["can_name"])
+        corrected=self.post(self.admin,PREFIX+f"/admin/teams/{second_id}",{"name":"Organizer Owls","reason":"Agreed organizer correction"},"PATCH")
+        self.assertEqual(corrected.status_code,200,corrected.get_data(as_text=True))
+        self.naming_policy(False)
+        self.naming_policy(True)
+        with self.app.app_context():
+            lock=QuestTeamName.query.get(second_id)
+            self.assertFalse(lock.auto_named)
+            self.assertTrue(lock.name_locked)
+            self.assertEqual(lock.claimed_by,1)
+            self.assertEqual(Teams.query.get(second_id).name,"Organizer Owls")
+        self.naming_policy(False)
+        self.assertEqual(self.admin.get(PREFIX+"/admin/state").json["data"]["onboarding"]["unnamed_count"],0)
+        self.assertEqual(self.onboarding_action("finalize").status_code,200)
+
+    def test_formation_naming_policy_strict_validation_stale_plans_and_once_claim_race(self):
+        ids=self.formation_pool(5)
+        for data in ({},{"allow_team_naming":1},{"allow_team_naming":"true"},{"unknown":True}):
+            self.assertEqual(self.post(self.admin,PREFIX+"/admin/onboarding",data,"PATCH").status_code,400)
+        plan=self.form_ready_pool(ids)
+        self.naming_policy(True)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/onboarding/optimize",{"preview":False,"fingerprint":plan["fingerprint"]}).status_code,409)
+        plan=self.attendance_plan()
+        self.apply_attendance(plan)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/onboarding",{"team_size":6},"PATCH").status_code,409)
+        entered,release=threading.Event(),threading.Event()
+        from CTFd.plugins.open_tech_quest import api as api_module
+        from flask import request
+        original=api_module.event
+        def gate(lock=False):
+            if lock and request.path==PREFIX+"/onboarding/name":
+                entered.set()
+                if not release.wait(3):
+                    raise RuntimeError("Naming policy gate not released")
+            return original(lock=lock)
+        with patch.object(api_module,"event",side_effect=gate):
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                pending=pool.submit(lambda:self.post(self.client(ids[0]),PREFIX+"/onboarding/name",{"name":"Stale naming form","confirm":True}))
+                try:
+                    self.assertTrue(entered.wait(3))
+                    self.naming_policy(False)
+                finally:
+                    release.set()
+                self.assertEqual(pending.result().status_code,409)
+        self.assertEqual(self.naming_policy(True)["unnamed_count"],1)
+        def claim(uid):
+            return self.post(self.client(uid),PREFIX+"/onboarding/name",{"name":f"Claimed by {uid}","confirm":True})
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses=list(pool.map(claim,ids[:2]))
+        self.assertEqual(sorted(r.status_code for r in responses),[200,409])
+        self.naming_policy(False)
+        self.assertEqual(self.naming_policy(True)["unnamed_count"],0)
+
+    def test_formation_legacy_allocate_ready_only_stable_and_exact_and_late_teams_follow_policy(self):
+        ids=self.formation_pool(3)
+        empty=self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":True})
+        self.assertEqual(empty.json["data"]["groups"],[])
+        self.attendance_window(True)
+        self.ready_user(self.client(ids[0]))
+        self.ready_user(self.client(ids[1]))
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":True}).status_code,409)
+        self.attendance_window(False)
+        preview=self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":True}).json["data"]
+        self.assertEqual(preview,self.post(self.admin,PREFIX+"/admin/teams/allocate",{"preview":True}).json["data"])
+        self.assertEqual(set(uid for g in preview["groups"] for uid in g["user_ids"]),set(ids[:2]))
+        changed=__import__("copy").deepcopy(preview)
+        changed["groups"][0]["user_ids"].reverse()
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/teams/allocate",dict(changed,preview=False)).status_code,409)
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/teams/allocate",dict(preview,preview=False)).status_code,200)
+        self.assertEqual(self.onboarding_action("close_checkin").status_code,200)
+        self.apply_attendance(self.attendance_plan())
+        self.attendance_window(True)
+        self.ready_user(self.client(ids[2]))
+        self.attendance_window(False)
+        late=self.onboarding_action("create_late_team",user_ids=[ids[2]],reason="Checked-in after grouping")
+        self.assertEqual(late.status_code,200,late.get_data(as_text=True))
+        own=self.client(ids[2]).get(PREFIX+"/onboarding").json["data"]
+        self.assertTrue(own["team"]["name_locked"])
+        self.assertFalse(own["can_name"])
+        self.naming_policy(True)
+        self.assertTrue(self.client(ids[2]).get(PREFIX+"/onboarding").json["data"]["can_name"])
+        self.naming_policy(False)
+        self.assertEqual(self.onboarding_action("finalize").status_code,200)
+        newcomer=self.late_accounts(30)[0]
+        self.attendance_window(True)
+        self.ready_user(newcomer)
+        self.assertEqual(self.admit([30],new_team_name="Team 7").status_code,200)
+        with self.app.app_context():
+            team=Teams.query.filter_by(name="Team 7").one()
+            self.assertTrue(QuestTeamName.query.get(team.id).name_locked)
+            self.assertFalse(QuestTeamName.query.get(team.id).auto_named)
+            self.assertEqual(QuestTeamName.query.get(team.id).claimed_by,1)
+
+    def simulate_old_formation_columns(self):
+        from CTFd.plugins.migrations import upgrade
+        from CTFd.plugins.open_tech_quest.schema import upgrade_sqlite_attendance
+        with self.app.app_context():
+            db.session.remove()
+            with db.engine.begin() as connection:
+                connection.execute("ALTER TABLE quest_onboarding DROP COLUMN allow_team_naming")
+                connection.execute("ALTER TABLE quest_team_names DROP COLUMN auto_named")
+            set_config("open_tech_quest_alembic_version","quest_0007")
+            db.session.remove()
+            upgrade(plugin_name="open_tech_quest")
+            upgrade_sqlite_attendance()
+
+    def test_formation_upgrade_old_applied_naming_preserves_claims_and_remains_completable(self):
+        self.open_onboarding()
+        with self.app.app_context():
+            state=QuestOnboarding.query.get(1)
+            state.phase,state.applied_at="naming",datetime.utcnow()
+            Teams.query.get(self.team_id).name="Team 01"
+            Teams.query.get(self.other_id).name="Chosen Owls"
+            claimed=datetime.utcnow()-timedelta(seconds=2)
+            db.session.add(QuestTeamName(team_id=self.other_id,name_locked=True,claimed_by=4,claimed_at=claimed))
+            for uid in (2,3,4):
+                db.session.add(QuestReadiness(user_id=uid))
+            db.session.commit()
+            people=[(u.id,u.name,u.team_id) for u in Users.query.order_by(Users.id).all()]
+            ready=[(r.user_id,r.ready_at) for r in QuestReadiness.query.order_by(QuestReadiness.user_id).all()]
+            names=[(t.id,t.name) for t in Teams.query.order_by(Teams.id).all()]
+        self.simulate_old_formation_columns()
+        with self.app.app_context():
+            self.assertTrue(QuestOnboarding.query.get(1).allow_team_naming)
+            self.assertFalse(QuestTeamName.query.get(self.team_id).name_locked)
+            self.assertTrue(QuestTeamName.query.get(self.team_id).auto_named)
+            self.assertFalse(QuestTeamName.query.get(self.other_id).auto_named)
+            self.assertEqual(QuestTeamName.query.get(self.other_id).claimed_by,4)
+            self.assertEqual(QuestTeamName.query.get(self.other_id).claimed_at,claimed)
+            self.assertEqual([(u.id,u.name,u.team_id) for u in Users.query.order_by(Users.id).all()],people)
+            self.assertEqual([(r.user_id,r.ready_at) for r in QuestReadiness.query.order_by(QuestReadiness.user_id).all()],ready)
+            self.assertEqual([(t.id,t.name) for t in Teams.query.order_by(Teams.id).all()],names)
+            self.assertEqual(QuestStart.query.count(),0)
+        self.naming_policy(False)
+        self.naming_policy(True)
+        self.assertTrue(self.alice.get(PREFIX+"/onboarding").json["data"]["can_name"])
+        self.assertFalse(self.carol.get(PREFIX+"/onboarding").json["data"]["can_name"])
+        self.naming_policy(False)
+        # Re-running actual startup migration steps must not re-enable policy.
+        from CTFd.plugins.migrations import upgrade
+        from CTFd.plugins.open_tech_quest.schema import upgrade_sqlite_attendance
+        with self.app.app_context():
+            upgrade(plugin_name="open_tech_quest")
+            upgrade_sqlite_attendance()
+            self.assertFalse(QuestOnboarding.query.get(1).allow_team_naming)
+        self.assertEqual(self.onboarding_action("finalize").status_code,200)
+
+    def test_formation_upgrade_active_legacy_preserves_names_native_history_and_clocks(self):
+        with self.app.app_context():
+            stamp=(datetime.utcnow()-timedelta(minutes=3)).replace(microsecond=345678)
+            e=QuestEvent.query.get(1)
+            e.status,e.start_at="live",stamp
+            state=QuestOnboarding.query.get(1)
+            state.finalized_at=stamp-timedelta(seconds=1)
+            db.session.add(QuestStart(team_id=self.team_id,room_id=QuestRoom.query.filter_by(slug="openshift").one().id,started_at=stamp+timedelta(seconds=1)))
+            db.session.add(Solves(challenge_id=1,user_id=2,team_id=self.team_id,date=stamp+timedelta(seconds=2)))
+            db.session.commit()
+            before=standings()
+            native=[(s.id,s.user_id,s.team_id,s.date) for s in Solves.query.all()]
+            locks=[(n.team_id,n.name_locked,n.claimed_by,n.claimed_at) for n in QuestTeamName.query.order_by(QuestTeamName.team_id).all()]
+        self.simulate_old_formation_columns()
+        with self.app.app_context():
+            self.assertFalse(QuestOnboarding.query.get(1).allow_team_naming)
+            self.assertEqual([(n.team_id,n.name_locked,n.claimed_by,n.claimed_at) for n in QuestTeamName.query.order_by(QuestTeamName.team_id).all()],locks)
+            self.assertTrue(all(not n.auto_named for n in QuestTeamName.query.all()))
+            self.assertEqual([(s.id,s.user_id,s.team_id,s.date) for s in Solves.query.all()],native)
+            self.assertEqual(QuestEvent.query.get(1).start_at,stamp)
+            self.assertEqual(standings()["teams"],before["teams"])
+        self.assertEqual(self.post(self.admin,PREFIX+"/admin/onboarding",{"allow_team_naming":True},"PATCH").status_code,409)

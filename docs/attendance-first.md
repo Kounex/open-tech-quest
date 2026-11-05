@@ -78,3 +78,24 @@ Run focused SQLite/MariaDB regression cases and frontend checks during developme
 independent correctness review, isolated real-browser journeys, then the full CI
 gate. Publish a source-matching GHCR image, pin both containers through GitOps,
 verify healthy rollout and preserved live event data, and update fleet notes.
+
+## Isolated acceptance
+
+An actual 0.1.14 upgrade retained four fictional morning registrations and an
+already-authored challenge, with no attendance or team assignment. The new
+policy defaulted off. An existing signed-in user received the attendance dialog
+when capture opened; a newly registered user received it immediately. Six ready
+participants and one no-show still had no teams until the reviewed plan was
+explicitly applied. Repeated previews matched; apply created exactly Team 1 and
+Team 2 with three members each, warned about the unavoidable 80% shortfall, kept
+the no-show unassigned and left all clocks unset. Generated names were locked,
+native/direct rename paths remained blocked, and the organizer finalized and
+started the event without any participant name confirmation.
+
+A separate disposable branch exercised optional naming: a ready teammate chose
+one final name; disabling/re-enabling preserved that claim and reopened only the
+other generated/unclaimed name. Disabling while a teammate held a confirmation
+closed the dialog through polling and rejected a stale direct request. Both
+chosen names remained unique and locked. The organizer screen's WCAG A/AA audit
+reported zero violations and zero incomplete checks. No production users, teams,
+attendance or competition state were modified for these checks.

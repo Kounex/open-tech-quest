@@ -155,10 +155,6 @@ export interface Challenge {
   attempts?: number;
   connection_info?: string;
 }
-export interface Allocation {
-  fingerprint: string;
-  groups: { name: string; user_ids: number[] }[];
-}
 declare global {
   interface Window {
     QUEST_INIT?: { csrfNonce?: string; viewer?: Viewer };
@@ -176,6 +172,7 @@ export interface AttendanceWindow {
   reason: string | null;
 }
 export interface Onboarding {
+  allow_team_naming: boolean;
   attendance: AttendanceWindow;
   phase: OnboardingPhase;
   team_size: number;
@@ -192,6 +189,7 @@ export interface Onboarding {
   can_name: boolean;
 }
 export interface AttendanceState {
+  allow_team_naming: boolean;
   late_admission: {
     allowed: boolean;
     reason: string | null;

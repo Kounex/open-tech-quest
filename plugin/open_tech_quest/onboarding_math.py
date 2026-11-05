@@ -2,7 +2,7 @@
 import math
 
 
-def optimize(ready_ids, memberships, teams, capacity, protected_ids=(), reserved_names=()):
+def optimize(ready_ids, memberships, teams, capacity, protected_ids=(), reserved_names=(), order=None):
     """Return selected bins and assignment; user IDs belong to exactly one bin.
 
     Candidate teams are ranked by retained attendance. Selecting the largest
@@ -11,9 +11,11 @@ def optimize(ready_ids, memberships, teams, capacity, protected_ids=(), reserved
     broken only when needed, using the smallest surplus donors last.
     """
     ready = set(ready_ids)
+    positions = {uid: index for index, uid in enumerate(order or sorted(ready))}
+    rank = lambda uid: (positions.get(uid, len(positions)), uid)
     if not ready:
         raise ValueError("No ready eligible participants are available")
-    members = {team["id"]: sorted(u for u in ready if memberships.get(u) == team["id"]) for team in teams}
+    members = {team["id"]: sorted((u for u in ready if memberships.get(u) == team["id"]), key=rank) for team in teams}
     protected = set(protected_ids)
     if any(len(members.get(tid, [])) > capacity for tid in protected):
         raise ValueError("A team with activity exceeds capacity; resolve its roster before optimizing")
@@ -35,13 +37,13 @@ def optimize(ready_ids, memberships, teams, capacity, protected_ids=(), reserved
     existing_names.update(t["name"].casefold() for t in teams)
     number = 1
     while len(groups) < count:
-        while f"Team {number:02}".casefold() in existing_names:
+        while f"Team {number}".casefold() in existing_names:
             number += 1
-        name = f"Team {number:02}"
+        name = f"Team {number}"
         existing_names.add(name.casefold())
         groups.append({"team_id": None, "name": name, "user_ids": []})
     retained = {u for group in groups for u in group["user_ids"]}
-    pool = sorted(ready - retained)
+    pool = sorted(ready - retained, key=rank)
     # Fill deficits using unattached/moved participants before disturbing a
     # retained member. If necessary, drain non-full donors before full cohorts.
     for group in groups:
@@ -60,7 +62,7 @@ def optimize(ready_ids, memberships, teams, capacity, protected_ids=(), reserved
         destination = min((i for i, g in enumerate(groups) if len(g["user_ids"]) < maximum), key=lambda i: (len(groups[i]["user_ids"]), i))
         groups[destination]["user_ids"].append(uid)
     for group in groups:
-        group["user_ids"].sort()
+        group["user_ids"].sort(key=rank)
     warnings = []
     if any(len(g["user_ids"]) < lower for g in groups):
         warnings.append(f"The {lower}-person attendance target (80% of {capacity}) cannot be met by every group; capacity remains enforced.")

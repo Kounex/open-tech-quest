@@ -54,6 +54,44 @@ def lock_name(team_id, actor_id):
         row = QuestTeamName(team_id=team_id)
         db.session.add(row)
     row.name_locked, row.claimed_by, row.claimed_at = True, actor_id, now()
+    row.auto_named = False
+
+
+def generated_name():
+    names = {team.name.casefold() for team in Teams.query.all()}
+    number = 1
+    while f"Team {number}".casefold() in names:
+        number += 1
+    return f"Team {number}"
+
+
+def generated_identity(team_id):
+    row = QuestTeamName.query.get(team_id)
+    if row is None:
+        row = QuestTeamName(team_id=team_id)
+        db.session.add(row)
+    row.auto_named = True
+    row.name_locked = not settings().allow_team_naming
+
+
+def apply_name_policy():
+    enabled = settings().allow_team_naming
+    assigned = {tid for (tid,) in Users.query.with_entities(Users.team_id).filter(Users.team_id.isnot(None)).distinct().all()}
+    for tid in assigned:
+        row = QuestTeamName.query.get(tid)
+        if row is None:
+            row = QuestTeamName(team_id=tid, auto_named=False)
+            db.session.add(row)
+        if not enabled:
+            row.name_locked = True
+        elif row.auto_named and row.claimed_by is None and row.claimed_at is None:
+            row.name_locked = False
+
+
+def random_order(ids, roster_fingerprint):
+    key = current_app.config["SECRET_KEY"]
+    key = key.encode() if isinstance(key, str) else key
+    return sorted(ids, key=lambda uid: hmac.new(key, f"quest-attendance:{roster_fingerprint}:{uid}".encode(), hashlib.sha256).digest())
 
 
 def attendance_reason(e, state=None):
@@ -131,13 +169,13 @@ def participant(user, e):
         readiness = {r.user_id: r for r in QuestReadiness.query.filter(QuestReadiness.user_id.in_([u.id for u in team.members])).all()}
         roster = {"id": team.id, "name": team.name, "name_locked": is_locked(team.id),
                   "members": [{"id": u.id, "name": u.name, "ready_at": iso(readiness[u.id].ready_at) if u.id in readiness else None} for u in sorted(team.members, key=lambda u: u.id)]}
-    return {"phase": state.phase, "team_size": state.team_size,
+    return {"phase": state.phase, "team_size": state.team_size, "allow_team_naming": bool(state.allow_team_naming),
             "ready_at": iso(ready.ready_at) if ready else None, "late": bool(ready and ready.late),
             "roster_released": show, "team": roster,
             "attendance": attendance(e, state),
             "can_ready": bool(not ready and can_confirm(user, e, state)),
             "can_name": bool(eligible(user) and ready and team and not team.banned and not team.hidden
-                             and state.phase == "naming" and e.status == "draft" and not is_locked(team.id))}
+                             and state.allow_team_naming and state.phase == "naming" and e.status == "draft" and not is_locked(team.id))}
 
 
 def competing_teams():
@@ -212,7 +250,7 @@ def summary(e):
     users = [u for u in Users.query.filter_by(type="user", banned=False).all() if eligible(u)]
     reason = start_reason(e) if e.status == "draft" else "The event has already started."
     locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
-    return {"phase": state.phase, "team_size": state.team_size, "attendance": attendance(e, state),
+    return {"phase": state.phase, "team_size": state.team_size, "allow_team_naming": bool(state.allow_team_naming), "attendance": attendance(e, state),
             "ready_count": sum(u.id in ready for u in users),
             "pending_count": sum(u.id not in ready for u in users),
             "unassigned_ready_count": sum(u.id in ready and not u.team_id for u in users),
@@ -232,13 +270,14 @@ def fingerprint(e):
     from .lifecycle import identity
     state = settings()
     locked = {row.team_id for row in QuestTeamName.query.filter_by(name_locked=True).all()}
-    payload = {"phase": state.phase, "team_size": state.team_size,
+    payload = {"phase": state.phase, "team_size": state.team_size, "allow_team_naming": bool(state.allow_team_naming),
                "attendance": [bool(state.attendance_open), state.attendance_generation], "event": [e.status, e.name, iso(e.start_at), iso(e.end_at), iso(e.rosters_release_at), e.room_clock, e.overall_clock],
                "users": [(u.id, identity(u), u.name, u.type, u.banned, u.team_id) for u in Users.query.order_by(Users.id).all()],
                "ready": [(r.user_id, iso(r.ready_at), r.late) for r in QuestReadiness.query.order_by(QuestReadiness.user_id).all()],
                "teams": [(t.id, t.name, t.banned, t.hidden, t.id in locked) for t in Teams.query.order_by(Teams.id).all()],
                "activity": sorted(activity_teams()),
-               "maintainers": [row.user_id for row in QuestMaintainer.query.order_by(QuestMaintainer.user_id).all()]}
+               "maintainers": [row.user_id for row in QuestMaintainer.query.order_by(QuestMaintainer.user_id).all()],
+               "name_provenance": [(row.team_id, row.auto_named, row.claimed_by, iso(row.claimed_at)) for row in QuestTeamName.query.order_by(QuestTeamName.team_id).all()]}
     key = current_app.config["SECRET_KEY"]
     key = key.encode() if isinstance(key, str) else key
     return hmac.new(key, json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(), hashlib.sha256).hexdigest()
@@ -263,12 +302,14 @@ def preview(e):
         if team.id in protected and (team.banned or team.hidden) and team.members:
             raise OnboardingError(f"Team '{team.name}' has activity but is hidden or banned. Resolve that team before optimizing.")
     candidates = [{"id": t.id, "name": t.name} for t in teams if not t.hidden and not t.banned]
+    current_fingerprint = fingerprint(e)
+    order = random_order([u.id for u in attendees], current_fingerprint)
     try:
-        groups, warnings = optimize([u.id for u in attendees], {u.id: u.team_id for u in attendees}, candidates, state.team_size, protected, [t.name for t in teams])
+        groups, warnings = optimize([u.id for u in attendees], {u.id: u.team_id for u in attendees}, candidates, state.team_size, protected, [t.name for t in teams], order=order)
     except ValueError as exc:
         raise OnboardingError(str(exc))
     moves = [{"user_id": uid, "from_team_id": next(u.team_id for u in attendees if u.id == uid), "to_group": index}
              for index, group in enumerate(groups) for uid in group["user_ids"]
              if group["team_id"] is None or next(u.team_id for u in attendees if u.id == uid) != group["team_id"]]
-    return {"fingerprint": fingerprint(e), "groups": groups, "moves": moves,
+    return {"fingerprint": current_fingerprint, "groups": groups, "moves": moves,
             "unassigned_user_ids": [u.id for u in all_users if eligible(u) and u.id not in {a.id for a in attendees}], "warnings": warnings}

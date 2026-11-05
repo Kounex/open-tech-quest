@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { dateTime, request } from "./api";
 import type {
   AdminState,
-  Allocation,
   AttendancePlan,
   AttendanceState,
   Participant,
@@ -11,6 +10,7 @@ import type {
 import { Confirm, Empty, Notice } from "./ui";
 import { AttendanceWindowControls } from "./attendance-window";
 import { LateAdmission } from "./late-admission";
+import { TeamNamingPolicy } from "./team-naming-policy";
 
 type Mutation = (
   path: string,
@@ -20,9 +20,9 @@ type Mutation = (
 ) => Promise<void>;
 type Props = { data: AdminState; busy: boolean; mutate: Mutation };
 const phaseNames = {
-  check_in: "Team preparation",
+  check_in: "Participant pool",
   closed: "Attendance review",
-  naming: "Team naming",
+  naming: "Final team review",
   finalized: "Rosters finalized",
 };
 function eligible(person: Participant) {
@@ -41,9 +41,18 @@ export function Attendance({
   onRefresh,
 }: Props & { onRefresh: () => Promise<void> }) {
   const [query, setQuery] = useState(""),
-    [view, setView] = useState<"teams" | "people">("teams"),
+    [view, setView] = useState<"teams" | "people">(
+      data.onboarding?.phase === "check_in" ? "people" : "teams",
+    ),
     [filter, setFilter] = useState("all");
   const state = data.onboarding;
+  useEffect(() => {
+    if (state?.phase === "naming" || state?.phase === "finalized")
+      setView("teams");
+  }, [state?.phase]);
+  useEffect(() => {
+    if (!state?.allow_team_naming && filter === "unnamed") setFilter("all");
+  }, [state?.allow_team_naming, filter]);
   if (!state)
     return (
       <Notice>
@@ -130,21 +139,23 @@ export function Attendance({
           <span>Below 80% target</span>
         </div>
         <div>
-          <strong>{state.unnamed_count}</strong>
-          <span>Teams awaiting names</span>
+          <strong>
+            {state.allow_team_naming
+              ? state.unnamed_count
+              : data.teams.filter(
+                  (team) => team.name_locked && team.user_ids.length > 0,
+                ).length}
+          </strong>
+          <span>
+            {state.allow_team_naming
+              ? "Teams awaiting names"
+              : "Teams with fixed names"}
+          </span>
         </div>
       </div>
-      {data.event.status === "draft" && state.phase === "check_in" && (
-        <InitialAllocation
-          key={state.team_size}
-          data={data}
-          busy={busy}
-          mutate={mutate}
-        />
-      )}
       {data.event.status === "draft" && state.phase === "closed" && (
-        <OptimizeReview
-          key={`${state.attendance?.generation}-${state.attendance?.enabled}`}
+        <TeamFormation
+          key={`${state.attendance?.generation}-${state.attendance?.enabled}-${state.team_size}-${state.allow_team_naming}`}
           data={data}
           busy={busy}
           mutate={mutate}
@@ -166,11 +177,11 @@ export function Attendance({
           <h2>Teams and attendance</h2>
           <p>
             {state.phase === "check_in"
-              ? "Provisional groups show who is here. No check-in starts a competition clock."
+              ? "Registered participants wait in the pool. Teams form only after attendance capture closes and a checked-in grouping plan is applied."
               : state.phase === "closed"
-                ? "Review attendance before applying the final grouping plan."
+                ? "Preview random balanced teams from checked-in participants, then explicitly apply the reviewed plan."
                 : state.phase === "naming"
-                  ? "Final groups can choose their name once. Place any ready late arrivals before finalizing."
+                  ? "Review the formed teams and any ready late arrivals before finalizing. Participant naming follows the organizer setting."
                   : "Existing players and team names stay fixed. Checked-in newcomers can be admitted through the controlled late-admission action when available."}
           </p>
         </div>
@@ -219,7 +230,9 @@ export function Attendance({
             {view === "teams" ? (
               <>
                 <option value="undersized">Below 80% target</option>
-                <option value="unnamed">Awaiting team name</option>
+                {state.allow_team_naming && (
+                  <option value="unnamed">Awaiting team name</option>
+                )}
               </>
             ) : (
               <>
@@ -248,12 +261,12 @@ export function Attendance({
             title={
               data.teams.length
                 ? "No matching teams"
-                : "No provisional teams yet"
+                : "Teams have not been formed yet"
             }
           >
             {data.teams.length
               ? "Try another search or attendance filter."
-              : "Preview the initial allocation to group registered participants during team preparation."}
+              : "Registered participants remain in the pool. After check-in, move to attendance review and preview teams from checked-in participants."}
           </Empty>
         )
       ) : (
@@ -289,16 +302,19 @@ function AttendanceLifecycle({ data, busy, mutate }: Props) {
         <div className="event-day-guidance">
           <h3>Event-day sequence</h3>
           <p>
-            Close registration and attendance capture at the cutoff. If
-            provisional grouping has not been applied, preview and apply the
-            initial random allocation during team preparation first. Moving to
-            review does not create teams or apply an optimization automatically.
+            Morning registration collects individual accounts without forming
+            teams. Open attendance later so people can confirm they are here. At
+            the cutoff, close registration as appropriate and move to attendance
+            review, which closes capture. Teams are created only after you
+            preview and apply the checked-in groups.
           </p>
           <ol>
             <li>Move to attendance review</li>
-            <li>Preview attendance optimization</li>
-            <li>Apply reviewed groups</li>
-            <li>Participants confirm team names</li>
+            <li>Preview teams from checked-in participants</li>
+            <li>Apply the reviewed teams</li>
+            {state.allow_team_naming && (
+              <li>Ready teammates choose their names once</li>
+            )}
             <li>Finalize rosters</li>
             <li>Start event from the Event tab</li>
           </ol>
@@ -348,43 +364,62 @@ function AttendanceLifecycle({ data, busy, mutate }: Props) {
           the person and survives a team move.
         </p>
       </div>
+      <TeamNamingPolicy
+        state={state}
+        event={data.event}
+        busy={busy}
+        onChange={(enabled) =>
+          mutate(
+            "/admin/onboarding",
+            "PATCH",
+            { allow_team_naming: enabled },
+            enabled
+              ? "Participant team naming enabled"
+              : "Current team names fixed; participant naming disabled",
+          )
+        }
+      />
       <div className="actions">
         {draft && state.phase === "check_in" && (
           <Confirm
             key={`review-${state.attendance?.generation}-${state.attendance?.enabled}`}
             label="Move to attendance review"
-            description="Close the attendance capture window and move the provisional teams to review. Existing readiness stays saved. Further confirmations require an organizer to explicitly reopen attendance check-in; no competition clock is started."
+            description="Close attendance capture and review the checked-in participant pool. No team is created by this action; next, preview and apply the random balanced groups. Existing readiness stays saved and no competition clock starts."
             disabled={busy}
             onConfirm={() =>
               mutate(
                 "/admin/onboarding/action",
                 "POST",
                 { action: "close_checkin" },
-                "Team preparation moved to attendance review",
+                "Checked-in participant pool moved to attendance review",
               )
             }
           />
         )}
         {draft && state.phase === "closed" && (
           <Confirm
-            label="Return to team preparation"
-            description="Return to provisional team preparation before the final groups have been applied. This does not open attendance capture. Participants keep their recorded readiness; control the check-in window separately."
+            label="Return to participant pool"
+            description="Return to the participant pool before reviewed teams have been applied. This does not open attendance capture or form teams. Recorded readiness is retained; control the check-in window separately."
             disabled={busy}
             onConfirm={() =>
               mutate(
                 "/admin/onboarding/action",
                 "POST",
                 { action: "reopen_checkin" },
-                "Returned to team preparation; attendance capture is unchanged",
+                "Returned to participant pool; attendance capture is unchanged",
               )
             }
           />
         )}
         {draft && state.phase === "naming" && (
           <Confirm
-            key={`finalize-${state.attendance?.generation}-${state.attendance?.enabled}`}
+            key={`finalize-${state.attendance?.generation}-${state.attendance?.enabled}-${state.allow_team_naming}`}
             label="Finalize rosters"
-            description="Freeze team membership after confirming every competing team has a final name, all assigned members are ready and no ready participant is waiting for placement. This does not start the event."
+            description={
+              state.allow_team_naming
+                ? "Freeze these reviewed teams after required one-time name choices are complete, assigned members are ready and waiting arrivals are resolved. Starting the event is a separate action."
+                : "Finalize the reviewed teams with their fixed generated or already-confirmed names. Assigned members must be ready and waiting arrivals resolved. Starting the event is a separate action."
+            }
             disabled={
               busy ||
               state.attendance?.enabled ||
@@ -434,115 +469,7 @@ function AttendanceLifecycle({ data, busy, mutate }: Props) {
   );
 }
 
-function InitialAllocation({ data, busy, mutate }: Props) {
-  const [preview, setPreview] = useState<Allocation | null>(null),
-    [loading, setLoading] = useState(false),
-    [error, setError] = useState("");
-  return (
-    <section className="admin-panel">
-      <h2>Initial random allocation</h2>
-      <p>
-        Place eligible registered participants into provisional teams, up to the
-        saved maximum of {data.onboarding.team_size}. Existing populated teams
-        are preserved. Attendance optimization comes during review with the
-        capture window closed.
-      </p>
-      <button
-        className="button secondary"
-        disabled={busy || loading}
-        onClick={async () => {
-          setLoading(true);
-          setPreview(null);
-          setError("");
-          try {
-            setPreview(
-              await request<Allocation>("/admin/teams/allocate", "POST", {
-                preview: true,
-                team_size: data.onboarding.team_size,
-              }),
-            );
-          } catch (error) {
-            setError((error as Error).message);
-          } finally {
-            setLoading(false);
-          }
-        }}
-      >
-        {loading ? "Preparing allocation…" : "Preview initial allocation"}
-      </button>
-      {error && <Notice tone="error">{error}</Notice>}
-      {preview && (
-        <div className="initial-allocation-preview">
-          <h3>
-            {preview.groups.length
-              ? `${preview.groups.length} provisional teams`
-              : "No eligible unassigned participants"}
-          </h3>
-          <div className="allocation-preview">
-            {preview.groups.map((group, index) => (
-              <div key={index}>
-                <label className="field">
-                  <span>Provisional team name</span>
-                  <input
-                    value={group.name}
-                    maxLength={128}
-                    onChange={(event) =>
-                      setPreview({
-                        ...preview,
-                        groups: preview.groups.map((entry, i) =>
-                          i === index
-                            ? { ...entry, name: event.target.value }
-                            : entry,
-                        ),
-                      })
-                    }
-                  />
-                </label>
-                <p>
-                  {group.user_ids
-                    .map(
-                      (id) =>
-                        data.participants.find((person) => person.id === id)
-                          ?.name || `Participant ${id}`,
-                    )
-                    .join(", ")}
-                </p>
-              </div>
-            ))}
-          </div>
-          {preview.groups.length > 0 && (
-            <Confirm
-              key={preview.fingerprint}
-              label="Apply initial allocation"
-              description={`Create the ${preview.groups.length} provisional teams shown above. Participants may still be moved when attendance is reviewed; this is not the final grouping or team naming step.`}
-              disabled={
-                busy ||
-                loading ||
-                !preview.fingerprint ||
-                preview.groups.some((group) => !group.name.trim())
-              }
-              onConfirm={async () => {
-                await mutate(
-                  "/admin/teams/allocate",
-                  "POST",
-                  {
-                    preview: false,
-                    groups: preview.groups,
-                    fingerprint: preview.fingerprint,
-                  },
-                  "Initial provisional teams allocated",
-                );
-                setPreview(null);
-              }}
-            />
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function OptimizeReview({ data, busy, mutate }: Props) {
+function TeamFormation({ data, busy, mutate }: Props) {
   const [plan, setPlan] = useState<AttendancePlan | null>(null),
     [loading, setLoading] = useState(false),
     [error, setError] = useState("");
@@ -551,12 +478,12 @@ function OptimizeReview({ data, busy, mutate }: Props) {
     `Participant ${id}`;
   return (
     <section className="admin-panel optimize-panel">
-      <h2>Review the attending groups</h2>
+      <h2>Form teams from checked-in participants</h2>
       <p>
-        Preview includes checked-in eligible participants only. It preserves
-        full groups where possible, minimizes moves and spreads a small tail
-        across the final groups. No-show accounts are kept; their provisional
-        assignments can be cleared.
+        Preview random, balanced groups from checked-in eligible participants
+        only. Unchanged attendance and settings return the same proposal. Review
+        and explicitly apply it; unconfirmed accounts remain outside the teams
+        and no competition clock starts.
       </p>
       <button
         className="button secondary"
@@ -581,10 +508,10 @@ function OptimizeReview({ data, busy, mutate }: Props) {
         }}
       >
         {loading
-          ? "Reviewing attendance…"
+          ? "Forming preview…"
           : plan
-            ? "Refresh optimization preview"
-            : "Preview attendance optimization"}
+            ? "Refresh team preview"
+            : "Preview checked-in teams"}
       </button>
       {data.onboarding.attendance?.enabled && (
         <p className="attendance-blocker">
@@ -597,10 +524,10 @@ function OptimizeReview({ data, busy, mutate }: Props) {
         <div className="optimization-review">
           <div className="optimization-totals">
             <span>
-              <strong>{plan.groups.length}</strong> final groups
+              <strong>{plan.groups.length}</strong> reviewed teams
             </span>
             <span>
-              <strong>{plan.moves.length}</strong> proposed moves
+              <strong>{plan.moves.length}</strong> proposed placements
             </span>
             <span>
               <strong>{plan.unassigned_user_ids.length}</strong> outside final
@@ -631,7 +558,9 @@ function OptimizeReview({ data, busy, mutate }: Props) {
             ))}
           </div>
           <details className="optimization-details">
-            <summary>Review participant moves ({plan.moves.length})</summary>
+            <summary>
+              Review participant placements ({plan.moves.length})
+            </summary>
             {plan.moves.length ? (
               <ul>
                 {plan.moves.map((move) => (
@@ -646,7 +575,7 @@ function OptimizeReview({ data, busy, mutate }: Props) {
                 ))}
               </ul>
             ) : (
-              <p>No attending participant needs to move</p>
+              <p>Existing safe placements remain unchanged</p>
             )}
           </details>
           {plan.unassigned_user_ids.length > 0 && (
@@ -664,13 +593,17 @@ function OptimizeReview({ data, busy, mutate }: Props) {
           )}
           <p className="meta">
             This plan is tied to the current attendance, capacity and
-            memberships. If anything changes, the server rejects it and you must
-            preview again.
+            memberships and naming policy. If anything changes, the server
+            rejects it and you must preview again.
           </p>
           <Confirm
-            key={plan.fingerprint}
-            label="Apply reviewed groups"
-            description="Apply exactly the reviewed attendance plan and open team naming. No-show assignments may be cleared without deleting accounts. After this, automatic rebalancing is unavailable because final names belong to these groups."
+            key={`${plan.fingerprint}-${data.onboarding.allow_team_naming}`}
+            label="Apply reviewed teams"
+            description={
+              data.onboarding.allow_team_naming
+                ? "Create exactly the reviewed teams from checked-in participants. Generated unclaimed names become available for one ready teammate to choose once before finalization. Existing records are retained and no competition clock starts."
+                : "Create exactly the reviewed teams from checked-in participants and fix their generated names, such as Team 1 and Team 2. No participant name confirmation is required. Review and finalize the rosters before starting the event; no clock starts now."
+            }
             disabled={
               busy ||
               loading ||
@@ -682,7 +615,7 @@ function OptimizeReview({ data, busy, mutate }: Props) {
                 "/admin/onboarding/optimize",
                 "POST",
                 { preview: false, fingerprint: plan.fingerprint },
-                "Attending groups applied; team naming is open",
+                "Checked-in teams formed; review and finalize the rosters",
               );
               setPlan(null);
             }}
@@ -728,8 +661,10 @@ function LateQueue({ data, busy, mutate }: Props) {
         <summary>Create an additional team for late arrivals</summary>
         <p>
           When the existing groups are full, create another group without moving
-          their members or changing their names. The new members will choose
-          their final team name.
+          their members or changing their names.{" "}
+          {data.onboarding.allow_team_naming
+            ? "A ready member of the new group can choose its name once."
+            : "The new group receives a generated fixed team name."}
         </p>
         <fieldset disabled={busy}>
           <legend>
@@ -771,8 +706,9 @@ function LateQueue({ data, busy, mutate }: Props) {
           />
         </label>
         <Confirm
+          key={`additional-${data.onboarding.allow_team_naming}`}
           label="Create additional team"
-          description={`Create a new final group for ${selected.length} selected ready participant${selected.length === 1 ? "" : "s"}? Existing groups stay intact. The new group must confirm its team name before rosters can be finalized.`}
+          description={`Create an additional team for ${selected.length} selected ready participant${selected.length === 1 ? "" : "s"}? Existing groups stay intact. ${data.onboarding.allow_team_naming ? "A ready teammate can choose its final name once before finalization." : "Its generated name is fixed; participant name confirmation is not required."}`}
           disabled={
             busy ||
             !selected.length ||
@@ -902,8 +838,10 @@ function RosterTeam({ team, data, busy, mutate }: Props & { team: Team }) {
               : phase === "check_in" || phase === "closed"
                 ? "Provisional"
                 : team.name_locked
-                  ? "Name confirmed"
-                  : "Awaiting name"}
+                  ? "Fixed name"
+                  : data.onboarding.allow_team_naming
+                    ? "Awaiting name"
+                    : "Review team"}
           </small>
         </span>
         <span className="attendance-team-size">
@@ -980,7 +918,7 @@ function RosterTeam({ team, data, busy, mutate }: Props & { team: Team }) {
                 {!draft
                   ? "Team identity is fixed after competition start"
                   : provisional
-                    ? "Members choose their final name after attendance optimization"
+                    ? "Participant name choice follows the saved naming policy after teams are formed"
                     : "Correcting a final group name requires an organizer reason"}
               </small>
             </label>

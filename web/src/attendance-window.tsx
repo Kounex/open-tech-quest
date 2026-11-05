@@ -65,8 +65,8 @@ export function AttendanceWindowControls({
           target
             ? late
               ? "Open late-only attendance for eligible unassigned newcomers? They confirm personally, then an administrator reviews their final placement. This never moves existing players, changes registration or resets a competition clock."
-              : "Allow participants to confirm that they are at the event and participating. Unconfirmed participants will be prompted again for this opening. This does not start competition clocks, change registration or change the team preparation phase."
-            : "Stop new attendance confirmations, including requests from already-open forms. Existing confirmations and their original timestamps stay saved. Team preparation and registration remain unchanged."
+              : "Allow participants to confirm that they are at the event and participating. Unconfirmed participants will be prompted again for this opening. This does not start competition clocks, change registration or change the team formation phase."
+            : "Stop new attendance confirmations, including requests from already-open forms. Existing confirmations and their original timestamps stay saved. Team formation and registration remain unchanged."
         }
         disabled={busy || (target && !state.can_open)}
         danger={!target}

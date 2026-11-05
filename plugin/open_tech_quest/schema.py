@@ -9,9 +9,11 @@ from CTFd.models import db
 def upgrade_sqlite_attendance():
     if db.engine.dialect.name != "sqlite":
         return
-    migration = import_module("CTFd.plugins.open_tech_quest.migrations.0005_attendance")
     with db.engine.connect() as connection:
         with connection.begin():
             # Serialize introspection and ALTERs across starting workers.
             connection.execute(text("BEGIN IMMEDIATE"))
-            migration.upgrade(Operations(MigrationContext.configure(connection)))
+            operations = Operations(MigrationContext.configure(connection))
+            for name in ("0005_attendance", "0008_attendance_first"):
+                migration = import_module("CTFd.plugins.open_tech_quest.migrations." + name)
+                migration.upgrade(operations)

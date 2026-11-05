@@ -55,7 +55,8 @@ export function EventNotice({ data }: { data: Bootstrap }) {
           <Link href="/quest#your-team">
             Check in and see your team in the quest lobby
           </Link>
-          . Your team assignment appears after roster release.
+          . Your team appears after organizers form the checked-in teams and
+          release the rosters.
           {event.rosters_release_at && (
             <> Roster release: {dateTime(event.rosters_release_at)}.</>
           )}

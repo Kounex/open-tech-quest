@@ -2,7 +2,6 @@
 import csv
 import io
 import re
-import secrets
 import math
 from datetime import timezone
 from functools import wraps
@@ -429,7 +428,8 @@ def configure_room(slug):
 
 
 def eligible_users():
-    return [u for u in Users.query.filter_by(type="user", banned=False, team_id=None).order_by(Users.id).all() if onboarding.eligible(u)]
+    ready = {row.user_id for row in QuestReadiness.query.all()}
+    return [u for u in Users.query.filter_by(type="user", banned=False, team_id=None).order_by(Users.id).all() if onboarding.eligible(u) and u.id in ready]
 
 
 def unique_name(name, excluding=None):
@@ -454,32 +454,29 @@ def allocate():
     state = onboarding.settings()
     if state.phase != "check_in":
         fail("Initial allocation is available only while check-in is open", 409)
+    if state.attendance_open:
+        fail("Close attendance capture before previewing or applying ready-only allocation", 409)
     preview = boolean(data.get("preview", True), "preview")
     users = eligible_users()
     fingerprint = onboarding.fingerprint(e)
     size = state.team_size
     if "team_size" in data and integer(data["team_size"], "Team size", 1, 50) != size:
         fail("Save the maximum team size in onboarding settings before previewing allocation", 409)
+    groups = []
+    if users:
+        from .onboarding_math import optimize
+        order = onboarding.random_order([user.id for user in users], fingerprint)
+        proposal, _ = optimize(order, {}, [], size, reserved_names=[team.name for team in Teams.query.all()], order=order)
+        groups = [{"name": group["name"], "user_ids": group["user_ids"]} for group in proposal]
     if preview:
-        if not users:
-            return success({"groups": [], "fingerprint": fingerprint})
-        secrets.SystemRandom().shuffle(users)
-        count = (len(users) + size - 1) // size
-        groups, names = [], {t.name.casefold() for t in Teams.query.all()}
-        next_number = 1
-        for index in range(count):
-            while f"Team {next_number:02}".casefold() in names:
-                next_number += 1
-            name = f"Team {next_number:02}"
-            names.add(name.casefold())
-            groups.append({"name": name, "user_ids": [u.id for u in users[index::count]]})
         return success({"groups": groups, "fingerprint": fingerprint})
     supplied = data.get("fingerprint")
     if not isinstance(supplied, str) or re.fullmatch(r"[0-9a-f]{64}", supplied) is None or not __import__("hmac").compare_digest(supplied, fingerprint):
         fail("Accounts or settings changed, or your preview is outdated. Preview allocation again before applying it.", 409)
-    groups = data.get("groups")
-    if not isinstance(groups, list) or not groups:
+    if not groups:
         fail("Preview allocation and supply its groups")
+    if data.get("groups") != groups:
+        fail("Use the unchanged ready-only allocation preview; refresh the proposal before applying", 409)
     ids, names, validated = [], set(), []
     for group in groups:
         if not isinstance(group, dict):
@@ -497,6 +494,7 @@ def allocate():
         team = Teams(name=name, captain_id=members[0])
         db.session.add(team)
         db.session.flush()
+        onboarding.generated_identity(team.id)
         for uid in members:
             users_by_id[uid].team_id = team.id
     audit("teams.allocate", {"groups": groups})
@@ -524,7 +522,7 @@ def configure_team(team_id):
             draft(e)
             if onboarding.settings().phase in ("naming", "finalized") or onboarding.is_locked(team.id):
                 reason(data)
-                onboarding.lock_name(team.id, get_current_user().id)
+            onboarding.lock_name(team.id, get_current_user().id)
             team.name = unique_name(name, team.id)
     changed_users = set()
     if "user_ids" in data:
@@ -685,6 +683,8 @@ def claim_team_name():
         fail("Confirm that your team's chosen name will be fixed")
     if e.status != "draft" or onboarding.settings().phase != "naming":
         fail("Team naming is available only after attendance optimization and before finalization", 409)
+    if not onboarding.settings().allow_team_naming:
+        fail("Participant team naming is disabled by the organizer", 409)
     if not user.team_id or QuestReadiness.query.get(user.id) is None or not released(e):
         fail("You must be a ready member of a released team to choose its name", 403)
     if onboarding.is_locked(user.team_id):
@@ -709,12 +709,18 @@ def configure_onboarding():
     data, e = body(), event(lock=True)
     draft(e)
     state = onboarding.settings()
-    if state.phase not in ("check_in", "closed"):
+    if not data or set(data) - {"team_size", "allow_team_naming"}:
+        fail("Supply team_size and/or allow_team_naming")
+    if "team_size" in data and state.phase not in ("check_in", "closed"):
         fail("Team capacity is fixed after attendance optimization", 409)
-    if set(data) != {"team_size"}:
-        fail("Supply the maximum team_size")
-    state.team_size = integer(data["team_size"], "Team size", 1, 50)
-    audit("onboarding.configure", {"team_size": state.team_size})
+    if "team_size" in data:
+        state.team_size = integer(data["team_size"], "Team size", 1, 50)
+    if "allow_team_naming" in data:
+        if state.phase not in ("check_in", "closed", "naming"):
+            fail("Team naming policy is fixed after roster finalization", 409)
+        state.allow_team_naming = boolean(data["allow_team_naming"], "allow_team_naming")
+        onboarding.apply_name_policy()
+    audit("onboarding.configure", data)
     db.session.commit()
     return success(onboarding.summary(e))
 
@@ -752,13 +758,10 @@ def onboarding_action():
         users = Users.query.filter(Users.id.in_(ids)).all()
         if len(users) != len(ids) or any(not onboarding.eligible(u) or u.team_id or QuestReadiness.query.get(u.id) is None for u in users):
             fail("Late arrival teams require ready eligible unassigned participants", 409)
-        names = {t.name.casefold() for t in Teams.query.all()}
-        number = 1
-        while f"Team {number:02}".casefold() in names:
-            number += 1
-        team = Teams(name=f"Team {number:02}", captain_id=ids[0])
+        team = Teams(name=onboarding.generated_name(), captain_id=ids[0])
         db.session.add(team)
         db.session.flush()
+        onboarding.generated_identity(team.id)
         for user in users:
             user.team_id = team.id
         audit("onboarding.late_team", {"team_id": team.id, "user_ids": ids, "reason": explanation})
@@ -785,22 +788,26 @@ def optimize_onboarding():
     supplied = data.get("fingerprint")
     if not isinstance(supplied, str) or re.fullmatch(r"[0-9a-f]{64}", supplied) is None or not __import__("hmac").compare_digest(supplied, plan["fingerprint"]):
         fail("Attendance, memberships or settings changed. Preview the current plan before applying it.", 409)
-    assignments = {}
+    assignments, group_members = {}, {}
     for group in plan["groups"]:
         team = Teams.query.get(group["team_id"]) if group["team_id"] else Teams(name=group["name"])
         if group["team_id"] is None:
             db.session.add(team)
             db.session.flush()
+            onboarding.generated_identity(team.id)
         for uid in group["user_ids"]:
             assignments[uid] = team.id
+        group_members[team.id] = group["user_ids"]
     users = Users.query.all()
     for user in users:
         user.team_id = assignments.get(user.id)
     for team in Teams.query.all():
-        ids = sorted(uid for uid, tid in assignments.items() if tid == team.id)
+        ids = group_members.get(team.id, [])
         team.captain_id = team.captain_id if team.captain_id in ids else (ids[0] if ids else None)
     state = onboarding.settings()
     state.phase, state.applied_at = "naming", now()
+    db.session.flush()
+    onboarding.apply_name_policy()
     audit("onboarding.optimize", {"fingerprint": plan["fingerprint"], "groups": plan["groups"], "unassigned_user_ids": plan["unassigned_user_ids"]})
     db.session.commit()
     for user in users:
@@ -836,8 +843,6 @@ def admit_late_arrivals():
     created = "new_team_name" in data
     if created:
         name = unique_name(data["new_team_name"])
-        if re.fullmatch(r"team\s*\d+", name, re.IGNORECASE):
-            fail("Choose an agreed final team name instead of a Team NN placeholder")
         team = Teams(name=name, captain_id=ids[0])
     else:
         team = Teams.query.get(integer(data["team_id"], "Team ID"))

@@ -44,7 +44,9 @@ function PersonalOnboarding({ viewer }: { viewer: Viewer }) {
                 : "Your account is ready. Organizers open attendance check-in separately from registration and team preparation."}
           </p>
           <p className="meta">
-            Checking in and choosing a team name never start a competition clock
+            {state.allow_team_naming
+              ? "Checking in and choosing a team name never start a competition clock"
+              : "Checking in never starts a competition clock"}
           </p>
         </div>
         {state.ready_at ? (
@@ -85,15 +87,16 @@ function PersonalOnboarding({ viewer }: { viewer: Viewer }) {
       )}
       {!state.roster_released ? (
         <div className="onboarding-note">
-          <h3>Your team will appear at roster release</h3>
+          <h3>Team details stay private until roster release</h3>
           <p>
             {state.ready_at
               ? "Your check-in is saved. "
               : state.can_ready
                 ? "Confirm your attendance above when you're ready. "
                 : "Attendance confirmation is available when organizers open check-in. "}
-            Team names and teammates stay private until the organizers release
-            the rosters.
+            Teams are formed from checked-in participants after attendance
+            review. Your team appears after that plan is applied and the rosters
+            are released.
           </p>
         </div>
       ) : !team ? (
@@ -105,9 +108,13 @@ function PersonalOnboarding({ viewer }: { viewer: Viewer }) {
           </h3>
           <p>
             {state.phase === "check_in"
-              ? "Organizers are preparing provisional teams. Attendance can be confirmed only while the separate check-in window is open."
+              ? state.ready_at
+                ? "Your attendance is confirmed. Organizers will form teams from checked-in participants after capture closes."
+                : "You're registered in the participant pool. Confirm attendance when check-in opens; team formation happens afterwards."
               : state.phase === "closed"
-                ? "Organizers are reviewing attendance and final group sizes. They control the attendance check-in window separately."
+                ? state.ready_at
+                  ? "Organizers are reviewing random balanced teams from checked-in participants. Your team appears when the reviewed plan is applied."
+                  : "Only checked-in participants enter the reviewed teams. Confirm attendance when capture is available, or ask an organizer about the next check-in window."
                 : state.phase === "naming"
                   ? state.ready_at
                     ? "Your readiness is saved. An organizer can place an attending late arrival before rosters are finalized."
@@ -132,7 +139,7 @@ function PersonalOnboarding({ viewer }: { viewer: Viewer }) {
                   : state.phase === "finalized"
                     ? "Final team"
                     : team.name_locked
-                      ? "Team name confirmed"
+                      ? "Fixed team name"
                       : "Your final group"}
               </span>
               <h3>{team.name}</h3>
@@ -163,11 +170,11 @@ function PersonalOnboarding({ viewer }: { viewer: Viewer }) {
           </ul>
           {(state.phase === "check_in" || state.phase === "closed") && (
             <p className="meta roster-explanation">
-              These groups are provisional. Organizers will use attendance to
-              balance the teams before naming opens.
+              Any earlier assignment is provisional. Organizers form the
+              reviewed teams from checked-in participants before finalization.
             </p>
           )}
-          {state.can_name && !team.name_locked ? (
+          {state.allow_team_naming && state.can_name && !team.name_locked ? (
             <div className="team-name-claim">
               <div>
                 <h3>Give your team its final name</h3>
@@ -189,6 +196,7 @@ function PersonalOnboarding({ viewer }: { viewer: Viewer }) {
                 />
               </label>
               <Confirm
+                key={`${team.id}-${state.allow_team_naming}-${state.can_name}-${team.name_locked}-${state.phase}`}
                 label="Confirm team name"
                 description={`Use “${name.trim()}” as your team's final name? This can be confirmed only once. An organizer correction requires a reason.`}
                 disabled={busy || !name.trim()}
@@ -200,17 +208,19 @@ function PersonalOnboarding({ viewer }: { viewer: Viewer }) {
                 }
               />
             </div>
-          ) : state.phase === "naming" && !team.name_locked ? (
+          ) : state.phase === "naming" &&
+            state.allow_team_naming &&
+            !team.name_locked ? (
             <p className="onboarding-note">
               {state.ready_at
                 ? "A checked-in teammate can confirm your team's name once naming is available."
                 : "Check in before confirming your team's name."}
             </p>
-          ) : team.name_locked ? (
+          ) : team.name_locked || !state.allow_team_naming ? (
             <p className="meta roster-explanation">
               {state.phase === "finalized"
                 ? "Your roster and team name are finalized. Your team shares progress across devices."
-                : "Your team's name is fixed. Organizers will finalize the rosters before opening the rooms."}
+                : "Your team name is fixed. Organizers will review and finalize the roster before starting the event."}
             </p>
           ) : null}
         </div>

@@ -66,7 +66,7 @@ export function LateAdmission({
     selected.length > 0 &&
     names.length === selected.length &&
     selected.length <= capacity;
-  const nameValid = !!name.trim() && !/^team\s*\d+$/i.test(name.trim());
+  const nameValid = !!name.trim();
   const nameTaken = data.teams.some(
     (team) =>
       team.name.trim().toLocaleLowerCase() === name.trim().toLocaleLowerCase(),
@@ -218,14 +218,14 @@ export function LateAdmission({
                   autoComplete="off"
                 />
                 <small>
-                  Agree the name with these newcomers first. It becomes their
-                  fixed final name; Team NN placeholders are not accepted.
+                  Choose an agreed unique name or an unused Team N name. It
+                  becomes the fixed final name for this additional team.
                 </small>
                 {name.trim() && (!nameValid || nameTaken) && (
                   <small>
                     {nameTaken
                       ? "A team already uses this name"
-                      : "Choose an agreed name instead of a Team NN placeholder"}
+                      : "Choose a non-empty final team name"}
                   </small>
                 )}
               </label>

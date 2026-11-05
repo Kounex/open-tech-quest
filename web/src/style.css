@@ -3439,3 +3439,19 @@ body:has(.participant-attendance-bar) {
     margin-top: 8px;
   }
 }
+
+.team-naming-policy {
+  border-block: 1px solid var(--line);
+  padding: 20px 0;
+  margin: 24px 0;
+}
+.team-naming-policy > .checkbox-field {
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+.team-naming-policy p {
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 880px;
+  margin: 8px 0 0;
+}

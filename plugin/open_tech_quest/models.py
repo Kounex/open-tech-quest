@@ -117,6 +117,7 @@ class QuestOnboarding(db.Model):
     attendance_generation = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     attendance_opened_at = db.Column(UTCDateTime)
     attendance_closed_at = db.Column(UTCDateTime)
+    allow_team_naming = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
 
 
 class QuestReadiness(db.Model):
@@ -132,6 +133,7 @@ class QuestTeamName(db.Model):
     claimed_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
     claimed_at = db.Column(UTCDateTime)
     name_locked = db.Column(db.Boolean, nullable=False, default=False)
+    auto_named = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
 
 
 class QuestMaintainer(db.Model):
