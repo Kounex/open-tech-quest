@@ -16,12 +16,13 @@ jobs:
       - run: docker build --target frontend .
 
   backend:
-    name: Backend (${{ matrix.database }})
-    runs-on: ubuntu-24.04
+    name: Backend (${{ matrix.database }}, ${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         database: [sqlite, mariadb]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
     services:
       mariadb:
         image: mariadb:10.11.19@sha256:d769e37960821dfdcf096954f6e7ac89f747e116c1bba98e48edd265dfc7deae
@@ -49,8 +50,12 @@ jobs:
             -m unittest discover -s /opt/quest-tests -p 'test_*.py' -v
 
   smoke:
-    name: Runtime startup and empty-install smoke
-    runs-on: ubuntu-24.04
+    name: Runtime startup and empty-install smoke (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: docker build --target runtime --tag quest-smoke .

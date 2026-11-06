@@ -213,13 +213,15 @@ accounted for as pause time. Preserve original solve history and audit logs.
 
 ## Deployment and rollback
 
-CI builds from the exact pinned CTFd base with the plugin and static frontend.
+CI builds from the exact pinned CTFd base with the plugin and static frontend,
+and publishes one image index for `linux/amd64` and `linux/arm64`. Backend
+integration and smoke tests run natively on both architectures before publish.
 Runtime credentials arrive through environment Secret references. The image
 contains neither participant data nor production credentials.
 
 The first GHCR package publication requires making the package public once
 in GitHub's package settings. Verify an anonymous pull before changing GitOps.
-Pin the tested tag and digest in both CTFd init and application containers;
+Pin the tested tag and index digest in both CTFd init and application containers;
 Argo handles the rollout. MariaDB, Redis, uploads and logs retain their PVCs.
 
 Plugin migrations run before request serving. Take a database/uploads backup
