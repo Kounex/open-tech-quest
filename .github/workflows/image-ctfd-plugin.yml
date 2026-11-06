@@ -43,6 +43,7 @@ jobs:
     with:
       image: ctfd-plugin
       context: .
+      platforms: linux/amd64,linux/arm64
       tag_prefix: v
       test_target: test
       bump: ${{ inputs.bump || 'patch' }}
