@@ -95,39 +95,41 @@ the browser. Player actions use native CTFd sessions and CSRF protection.
 Size for **simultaneously active participants**, not registered accounts alone.
 Visible pages poll even without submissions. Our room/standings mix generated
 roughly **0.45 API requests/second per participant**: about 45 requests/s for
-100 people or 180 requests/s for 400. External challenge workloads are separate.
+100 people or 180 requests/s for 400. Challenge workloads run elsewhere.
 
-In November 2026, we tested plugin **0.1.16 / CTFd 3.8.9** on a shared
-8-vCPU OpenShift node. An isolated instance used 400 separate authenticated
-HTTP sessions, 50 teams of eight, 25 demo challenges and 500 seeded solves.
-We replayed browser-verified polling; separate runs covered correct/incorrect
-flags, cold downloads and sign-in/registration bursts. Measurements covered traffic,
-p95/p99 latency, 12-second client deadlines, CPU/throttling, RAM, database
-connections/lock waits and restarts.
+In November 2026, we tested **plugin 0.1.17 / CTFd 3.8.9** on multi-node OpenShift
+with 16-vCPU AMD EPYC VM nodes. A disposable instance used 400 native authenticated
+HTTP sessions, 50 teams of eight, 25 demo challenges and 500 seeded solves,
+with separate CTFd/MariaDB/Redis pods and persistent storage. We replayed
+browser-verified polling and tested flags, reconnects, cold downloads and
+later-event history. We captured traffic, p95/p99 latency, client deadlines,
+CPU/throttling, RAM, database connections/lock waits and restarts.
+This simulates HTTP users, not 400 browser renderers.
 
-During the ramp, two workers with a 2-CPU limit had endpoint p95 below 350ms
-at 50 active users, slowed at 100 and timed out at 200. Four workers with 4 CPUs
-did not sustain 400. CPU demand and flag-write lock contention dominated; memory and warm
-network traffic were modest. These host-specific results are not universal
-capacity ratings.
-
-Our **next profile to validate**, not a proven 400-user configuration, is:
+**Eight workers / eight CPUs fell behind at 400 users.** Twelve workers sustained
+a ten-minute 400-user hold: 109,011 requests, no errors, endpoint p95
+190–1,047 ms and about 8.7 application CPU cores. A five-minute repeat with
+1,030 solves also passed. Mixed flag submissions passed, but a simultaneous
+50-team burst had nine 12-second client timeouts: the solves committed while
+acknowledgments were delayed by write-lock contention. Rapid reconnects hit
+the safety backlog limit. This validates steady traffic,
+**not full burst readiness for a 400-person event**.
 
 | Component | CPU request / limit | Memory request / limit |
 |---|---|---|
-| CTFd, 8 Gunicorn worker processes in one pod | 6 / 8 cores | 2 / 4 GiB |
+| CTFd, 12 Gunicorn worker processes in one pod | 10 / 12 cores | 2 / 4 GiB |
 | MariaDB | 1 / 2 cores | 1 / 2 GiB |
 | Redis | 250m / 500m | 128 / 256 MiB |
 
 The [event overlay](https://github.com/Kounex/ocp-gitops/tree/main/manifests/apps/ctfd/apps/overlays/event)
-implements this profile with `WORKERS=8` and database pools capped at 120
-application connections. Bound pools when increasing workers. Allow additional
-capacity for OpenShift; CPU limits alone do not reserve capacity.
+implements this profile with pools capped at 120 application connections.
+Recheck pool limits when increasing workers. Allow additional capacity for
+OpenShift; CPU limits alone do not reserve capacity.
 
 For your event, estimate active-page traffic, then test your hardware with
-representative team sizes, accumulated solves, flags and reconnect bursts.
-Leave CPU headroom and check tail latency and lock waits, not only throughput.
-Keep synthetic participants and progress in a disposable instance.
+representative teams, accumulated solves, flags and reconnect bursts.
+These are host-specific measurements. Leave CPU headroom and inspect tail latency
+and lock waits alongside throughput. Keep synthetic data in a disposable instance.
 
 ### Local image build on Mac OS
 
