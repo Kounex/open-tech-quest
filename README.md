@@ -92,44 +92,52 @@ the browser. Player actions use native CTFd sessions and CSRF protection.
 
 ### Sizing and load testing
 
-Size for **simultaneously active participants**, not registered accounts alone.
-Visible pages poll even without submissions. Our room/standings mix generated
-roughly **0.45 API requests/second per participant**: about 45 requests/s for
-100 people or 180 requests/s for 400. Challenge workloads run elsewhere.
+Size for **simultaneously active participants**. Visible pages poll even without
+submissions: our room/standings mix generates about **0.45 API requests/second
+per participant**, or 45 requests/s for 100 people and 180 for 400. The challenge
+workloads themselves run elsewhere.
 
-In November 2026, we tested **plugin 0.1.17 / CTFd 3.8.9** on multi-node OpenShift
-with 16-vCPU AMD EPYC VM nodes. A disposable instance used 400 native authenticated
-HTTP sessions, 50 teams of eight, 25 demo challenges and 500 seeded solves,
-with separate CTFd/MariaDB/Redis pods and persistent storage. We replayed
-browser-verified polling and tested flags, reconnects, cold downloads and
-later-event history. We captured traffic, p95/p99 latency, client deadlines,
-CPU/throttling, RAM, database connections/lock waits and restarts.
-This simulates HTTP users, not 400 browser renderers.
+In November 2026, we tested **plugin 0.1.18 / CTFd 3.8.9** on multi-node OpenShift
+with 16-vCPU AMD EPYC VM nodes: 400 native authenticated sessions, 50 teams of
+eight, 25 demo challenges and up to 1,070 historical solves before the final
+burst. Protocol clients ran the shipped polling scheduler through the HTTPS
+Route; one browser verified request coalescing. These are HTTP users, not
+400 browser renderers. We captured latency, errors, CPU/throttling, memory,
+traffic, database connections/lock waits and restarts in a disposable instance.
 
-**Eight workers / eight CPUs fell behind at 400 users.** Twelve workers sustained
-a ten-minute 400-user hold: 109,011 requests, no errors, endpoint p95
-190–1,047 ms and about 8.7 application CPU cores. A five-minute repeat with
-1,030 solves also passed. Mixed flag submissions passed, but a simultaneous
-50-team burst had nine 12-second client timeouts: the solves committed while
-acknowledgments were delayed by write-lock contention. Rapid reconnects hit
-the safety backlog limit. This validates steady traffic,
-**not full burst readiness for a 400-person event**.
+Team/challenge-scoped history reads and request-local reuse reduced application
+CPU from **8.7 to 6.6 cores** in the unchanged fixed-rate replay at a 12-CPU cap.
+The frontend now coalesces overlapping refreshes, spreads periodic traffic and
+backs off failures. Healthy attendance polling retains its five-second cadence.
+
+The selected **10-CPU cap / 12-worker** profile sustained the later-history
+400-user hold for ten minutes: **109,089 requests, zero unrecovered errors**, about
+**6.0 application cores**, and endpoint p95 up to **0.37s**.
+All 50 simultaneous team flags succeeded (p95 7.9s), all 400 teammates
+observed their solve, and all 400 reconnects and all 400 reloads completed;
+each arrival burst lasted ten seconds. Four stale-connection GET retries were
+recorded; no POST was retried. The shared event write lock remains: simultaneous
+flag bursts still queue for several seconds. An 8-CPU cap exceeded our 2s steady
+endpoint-p95 target, so we kept more headroom.
 
 | Component | CPU request / limit | Memory request / limit |
 |---|---|---|
-| CTFd, 12 Gunicorn worker processes in one pod | 10 / 12 cores | 2 / 4 GiB |
+| CTFd, 12 Gunicorn worker processes in one pod | 8 / 10 cores | 2 / 4 GiB |
 | MariaDB | 1 / 2 cores | 1 / 2 GiB |
 | Redis | 250m / 500m | 128 / 256 MiB |
 
 The [event overlay](https://github.com/Kounex/ocp-gitops/tree/main/manifests/apps/ctfd/apps/overlays/event)
-implements this profile with pools capped at 120 application connections.
-Recheck pool limits when increasing workers. Allow additional capacity for
-OpenShift; CPU limits alone do not reserve capacity.
+implements this profile: total requests 9.25 CPU / 3.125 GiB, limits 12.5 CPU /
+6.25 GiB, plus OpenShift. Twelve workers are processes, independent of the CPU
+cap; their pools allow at most 120 application connections. Recheck pool limits
+when changing workers. CPU limits do not reserve capacity.
 
-For your event, estimate active-page traffic, then test your hardware with
-representative teams, accumulated solves, flags and reconnect bursts.
-These are host-specific measurements. Leave CPU headroom and inspect tail latency
-and lock waits alongside throughput. Keep synthetic data in a disposable instance.
+The final capacity hold originated inside the cluster through its public Route.
+In-cluster cold downloads passed all 7,600 requests, while external connection
+stress exposed socket closures and connection deadlines with spare CPU. Validate
+your venue network and ingress separately. Repeat representative flags, reconnects
+and accumulated history on your hardware; inspect tail latency alongside average
+CPU. Keep synthetic fixtures separate from the real event.
 
 ### Local image build on Mac OS
 
