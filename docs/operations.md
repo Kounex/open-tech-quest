@@ -173,6 +173,15 @@ that would make cleanup unsafe. Load/removal operations are audited.
 
 ## During the event
 
+- Challenge visibility has three distinct states. **Hidden** removes a step
+  from participant paths, prerequisites and unpublished award counts while
+  preserving all submissions. Restoring it restores eligible solves with their
+  original timestamps. **Locked** keeps a blocked step in the path and retains
+  prior credit; **Visible** permits play once normal access checks pass. Staff
+  can preview all three. Prefer configuring these states before starting;
+  changing them later can alter the chain and unpublished rankings. A room
+  cannot start a new clock until its first non-hidden step is Visible; existing
+  clocks are preserved through visibility changes.
 - Start the event through Open Tech Quest, not the native CTFd time settings.
   Native time/mode changes are guarded because they would bypass history.
 - A team starts a room before viewing challenge content. Any teammate can

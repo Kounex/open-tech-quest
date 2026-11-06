@@ -20,7 +20,7 @@ from CTFd.utils.user import get_ip
 from . import lifecycle, onboarding
 from .models import QuestAudit, QuestStart, QuestStep
 from .recovery_models import QuestRecoverySolve
-from .service import Projection, event, iso, now, released, solve_map
+from .service import Projection, event, iso, now, participant_steps, released, solve_map
 
 
 def _result(status, message, code=200, success=True):
@@ -109,8 +109,7 @@ def _fresh_attempt(pending):
     if start is None or at < start.started_at:
         return None, _result("incorrect", "Start the room before submitting", 403, False)
     solved = solve_map(e).get(user.team_id, {})
-    prerequisites = {s.challenge_id for s in QuestStep.query.filter(
-        QuestStep.room_id == step.room_id, QuestStep.position < step.position).all()}
+    prerequisites = {s.challenge_id for s in participant_steps(step.room_id) if s.position < step.position}
     if not set(solved) >= prerequisites:
         return None, _result("incorrect", "Solve the previous steps before submitting", 403, False)
     if challenge.id in solved:

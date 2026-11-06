@@ -57,6 +57,7 @@ export interface Room {
   };
   steps: Step[];
   progress: Progress;
+  startable: boolean;
 }
 export interface RegistrationState {
   enabled: boolean;
@@ -243,7 +244,7 @@ export interface EditableChallenge {
   id: number;
   name: string;
   description: string;
-  state: "hidden" | "visible";
+  state: "hidden" | "visible" | "locked";
   type: string;
   flags: EditableFlag[];
   can_edit: boolean;

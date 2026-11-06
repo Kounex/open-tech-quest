@@ -6,6 +6,57 @@ from .models import QuestCorrection, QuestStart, QuestStep
 from .service import event, room_steps
 
 
+def sync_native_chain(room_id):
+    """Derive CTFd's own access rules from the non-hidden quest path.
+
+    No commit or topology mutation: callers own the event lock/transaction.
+    In particular, CTFd checks Requirements again after our participant guard.
+    """
+    rows = (db.session.query(QuestStep, Challenges)
+            .join(Challenges, Challenges.id == QuestStep.challenge_id)
+            .filter(QuestStep.room_id == room_id).order_by(QuestStep.position).all())
+    active = [c.id for _, c in rows if c.state != "hidden"]
+    prerequisites = []
+    changed = False
+    for _, challenge in rows:
+        requirements = {"prerequisites": list(prerequisites), "anonymize": False}
+        if challenge.state != "hidden":
+            prerequisites.append(challenge.id)
+        next_id = next((cid for cid in active if cid not in prerequisites), None)
+        if challenge.requirements != requirements or challenge.next_id != next_id:
+            challenge.requirements, challenge.next_id = requirements, next_id
+            changed = True
+    return changed
+
+
+def _sync_visibility(session, flush_context, instances):
+    # Native challenge update() commits itself. Derive before its flush so
+    # visibility and Requirements become visible atomically to other workers.
+    from sqlalchemy import inspect
+    ids = [c.id for c in session.dirty if isinstance(c, Challenges)
+           and inspect(c).attrs.state.history.has_changes()]
+    if ids:
+        room_ids = {s.room_id for s in QuestStep.query.filter(QuestStep.challenge_id.in_(ids)).all()}
+        for room_id in room_ids:
+            sync_native_chain(room_id)
+
+
+def initialize_visibility():
+    from sqlalchemy import event as sqlalchemy_event
+    from CTFd.cache import clear_challenges
+    if not sqlalchemy_event.contains(db.session, "before_flush", _sync_visibility):
+        sqlalchemy_event.listen(db.session, "before_flush", _sync_visibility)
+    # Backfill older installations with hidden steps, serialized with normal
+    # challenge editing and event operations. Never change starts or solves.
+    event(lock=True)
+    changed = False
+    for room_id, in db.session.query(QuestStep.room_id).distinct().all():
+        changed = sync_native_chain(room_id) or changed
+    db.session.commit()
+    if changed:
+        clear_challenges()
+
+
 def activity_reason(room, challenge_ids=None):
     """Preserve room timing and all native challenge activity, including failures."""
     if QuestStart.query.filter_by(room_id=room.id).first():
@@ -73,4 +124,6 @@ def set_challenge_order(room, ids):
         challenge.next_id = ids[position + 1] if position + 1 < len(ids) else None
         challenge.position = position
         db.session.add(QuestStep(room_id=room.id, challenge_id=challenge_id, position=position))
+    db.session.flush()
+    sync_native_chain(room.id)
 

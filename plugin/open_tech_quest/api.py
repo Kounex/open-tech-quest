@@ -17,7 +17,7 @@ from CTFd.utils.user import get_current_user, is_admin
 from .models import (QuestEvent, QuestRoom, QuestStep, QuestStart, QuestPause,
                      QuestExclusion, QuestCorrection, QuestAudit, QuestReadiness, QuestTeamName)
 from .service import (event, event_data, now, iso, parse_time, released,
-                      room_data, room_steps, standings, Projection)
+                      room_data, room_steps, participant_steps, standings, Projection)
 
 from . import demo, onboarding, registration, roles, lifecycle
 from .models import QuestMaintainer
@@ -206,10 +206,11 @@ def start_room(slug):
     if e.status != "live" or not ctftime() or (e.end_at and now() >= e.end_at) or not released(e):
         fail("Rooms can start only while the event is live and rosters are released", 409)
     room = room_by_slug(slug)
-    if not room_steps(room):
-        fail("This room has no challenges yet", 409)
     start = QuestStart.query.filter_by(team_id=user.team_id, room_id=room.id).first()
     if start is None:
+        steps = participant_steps(room.id)
+        if not steps or Challenges.query.get(steps[0].challenge_id).state != "visible":
+            fail("This room has no available first challenge yet", 409)
         db.session.add(QuestStart(team_id=user.team_id, room_id=room.id, started_at=now()))
         # Unique constraint and event row lock protect teammates and workers.
         try:

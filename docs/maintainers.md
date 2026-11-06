@@ -82,7 +82,7 @@ Existing `/api/v1/quest` envelope and session/CSRF rules apply.
 - GET `/manage/rooms/<slug>/challenges`: ChallengeWorkspace.
 - POST same collection: `{name,description,state,flags}` creates a native
   standard challenge with fixed value 100, appends/maps it atomically and returns
-  EditableChallenge. State is `hidden|visible`; flags is a nonempty array of
+  EditableChallenge. State is `hidden|visible|locked`; flags is a nonempty array of
   `{content:string,case_insensitive:boolean}`. Empty descriptions allowed.
 - PATCH `/manage/rooms/<slug>/challenges/<id>` accepts those same four fields
   (partial updates allowed); returns EditableChallenge.

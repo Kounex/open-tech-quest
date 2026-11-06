@@ -105,8 +105,8 @@ def checked_payload(data, create=False):
     if "description" in data:
         result["description"] = checked_text(data["description"], "Description", DESCRIPTION_LIMIT, empty=True)
     if "state" in data:
-        if data["state"] not in ("hidden", "visible"):
-            fail("Challenge state must be hidden or visible")
+        if data["state"] not in ("hidden", "visible", "locked"):
+            fail("Challenge state must be hidden, visible or locked")
         result["state"] = data["state"]
     if "flags" in data:
         values = data["flags"]

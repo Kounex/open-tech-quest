@@ -11,7 +11,7 @@ import { Confirm, Empty, Markdown, Notice } from "./ui";
 interface Draft {
   name: string;
   description: string;
-  state: "hidden" | "visible";
+  state: EditableChallenge["state"];
   flags: EditableFlag[];
 }
 function draftOf(challenge?: EditableChallenge): Draft {
@@ -126,7 +126,12 @@ export function ChallengeEditor({
             >
               <span>{item.name}</span>
               <small>
-                {item.state === "visible" ? "Visible" : "Hidden"} · {item.type}
+                {item.state === "visible"
+                  ? "Visible"
+                  : item.state === "locked"
+                    ? "Locked"
+                    : "Hidden"}{" "}
+                · {item.type}
                 {!item.can_edit ? " · Read-only" : ""}
               </small>
             </button>
@@ -336,6 +341,7 @@ function ChallengeForm({
           <label className="field">
             <span>Visibility</span>
             <select
+              aria-describedby="challenge-visibility-help"
               value={draft.state}
               onChange={(event) =>
                 setDraft({
@@ -348,8 +354,14 @@ function ChallengeForm({
               <option value="visible">
                 Visible when its room step is available
               </option>
+              <option value="locked">Locked until published as visible</option>
             </select>
           </label>
+          <p className="meta" id="challenge-visibility-help">
+            Hidden challenges are left out of participant paths and progress.
+            Locked challenges stay in the path; unsolved ones block later steps
+            until made visible. Staff can preview either state.
+          </p>
           <div className="section-heading">
             <h3>Accepted answers</h3>
           </div>

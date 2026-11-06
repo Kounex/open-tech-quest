@@ -6,7 +6,7 @@ from CTFd.utils.dates import ctftime
 from CTFd.utils.user import is_admin
 from CTFd.utils.security.signing import unserialize, BadSignature, BadTimeSignature, SignatureExpired
 from .models import QuestStep, QuestStart
-from .service import event, now, released, solve_map
+from .service import event, now, participant_steps, released, solve_map
 from . import onboarding, registration, lifecycle
 from .lifecycle import current_user as get_current_user
 
@@ -250,7 +250,7 @@ def install_guards(app):
         challenge = Challenges.query.get(challenge_id)
         if not challenge or challenge.state != "visible":
             return denied("This challenge is not available", 404)
-        prerequisites = {s.challenge_id for s in QuestStep.query.filter(QuestStep.room_id == step.room_id, QuestStep.position < step.position).all()}
+        prerequisites = {s.challenge_id for s in participant_steps(step.room_id) if s.position < step.position}
         solved = set(solve_map(e).get(user.team_id, {}))
         if not solved >= prerequisites:
             return denied("Solve the previous steps before opening this challenge")

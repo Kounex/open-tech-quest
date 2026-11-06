@@ -18,7 +18,10 @@ export function useResource<T>(path: string | null, interval = 10000) {
       }
     } catch (e) {
       if (id === sequence.current) {
-        if (e instanceof ApiError && (e.status === 401 || e.status === 403))
+        if (
+          e instanceof ApiError &&
+          (e.status === 401 || e.status === 403 || e.status === 404)
+        )
           setData(null);
         setError(e instanceof Error ? e.message : "Unable to load");
       }

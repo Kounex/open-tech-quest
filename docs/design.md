@@ -15,6 +15,19 @@ enforce that chain; the plugin additionally enforces room start and asset
 access. Room managers author standard flag challenges in Organize; native
 administration remains available to full administrators.
 
+Native challenge visibility is applied consistently across the room path,
+prerequisites and standings. **Hidden** withdraws a challenge: participants and
+guests receive no step/title, it is skipped in the chain and excluded from room
+and overall awards. Original submissions and timestamps remain intact; making
+it visible again restores eligible credit at its original time. **Locked** keeps
+a gated step in the chain and totals, denies content/submissions, and retains
+previously earned credit. **Visible** allows play subject to event/team/room and
+prerequisite checks. Staff retain explicit hidden/locked authoring previews.
+Starting a new room requires its first non-hidden challenge to be Visible;
+visibility changes never reset an existing room clock. Published award snapshots
+remain immutable. Prefer setting visibility before competition starts because
+withdrawing/restoring a step changes the active chain and unpublished rankings.
+
 ## Design direction
 
 - Product: a team challenge event across five Red Hat topic rooms.
@@ -139,7 +152,8 @@ session and CTFd CSRF checks. No administrator token in the browser.
 `can_manage_users`. Maintainers are staff, excluded from participant onboarding.
 
 `Room`: `id`, `slug`, `name`, `subtitle`, `description`, `position`,
-`theme` (accent, logo_url, hero_url, layout), `steps`, `progress`.
+`theme` (accent, logo_url, hero_url, layout), `steps`, `progress`,
+`startable` (first non-hidden challenge is Visible; other start guards still apply).
 `Step`: `id`, `title`, `position`, `state` (locked/available/solved),
 `solved_at`; no description, files, answer or hint in locked metadata.
 `Progress`: `solved`, `total`, `started_at`, `elapsed_ms`,

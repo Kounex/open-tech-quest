@@ -229,7 +229,7 @@ class AuthoringIntegration(unittest.TestCase):
     def test_validation_is_strict_bounded_atomic_and_never_echoes_flags(self):
         invalid = [
             {"name": "x" * 81}, {"name": " "}, {"description": "x" * 10001},
-            {"state": "locked"}, {"flags": []}, {"flags": ["secret-invalid-input"]},
+            {"state": "unknown"}, {"flags": []}, {"flags": ["secret-invalid-input"]},
             {"flags": [{"content": "secret-invalid-input"}]},
             {"flags": [{"content": "secret-invalid-input", "case_insensitive": "false"}]},
             {"flags": [{"content": " secret-invalid-input ", "case_insensitive": False}]},

@@ -31,6 +31,8 @@ def load(app):
                 raise
     from .onboarding import initialize
     initialize(QuestEvent.query.get(1))
+    from .room_topology import initialize_visibility
+    initialize_visibility()
     from .api import api, viewer
     from .guards import install_guards
     shell = Blueprint("quest", __name__, template_folder="templates", static_folder="assets", static_url_path="/plugins/open_tech_quest/assets")

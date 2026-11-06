@@ -244,6 +244,16 @@ export function RoomPage({
     room?.steps.find((s) => s.id === selected && s.state !== "locked") ||
     current;
   useEffect(() => {
+    if (
+      room &&
+      selected !== null &&
+      !room.steps.some((s) => s.id === selected && s.state !== "locked")
+    ) {
+      setSelected(null);
+      setSolveMessage("");
+    }
+  }, [room, selected]);
+  useEffect(() => {
     setSelected(null);
     setSolveMessage("");
     setProgressMessage("");
@@ -264,6 +274,7 @@ export function RoomPage({
     data.viewer.role === "participant" &&
     !!data.viewer.team_id &&
     data.event.status === "live" &&
+    room.startable &&
     room.progress.total > 0;
   return (
     <>
@@ -353,6 +364,12 @@ export function RoomPage({
                 : "This event ranks room time from your team’s room start."}{" "}
               Organizer pauses are excluded.
             </p>
+            {!room.startable && (
+              <p role="status">
+                The organizers have not opened this room’s first challenge yet.
+                Your team’s timer will not start until it is available.
+              </p>
+            )}
           </div>
           <button
             className="button"
@@ -377,7 +394,9 @@ export function RoomPage({
             {starting
               ? "Starting room…"
               : data.event.status === "live"
-                ? "Start room"
+                ? room.startable
+                  ? "Start room"
+                  : "Room not ready"
                 : "Room not open"}
             <Arrow />
           </button>

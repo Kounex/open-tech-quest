@@ -72,6 +72,13 @@ def room_steps(room):
     return QuestStep.query.filter_by(room_id=room.id).order_by(QuestStep.position).all()
 
 
+def participant_steps(room_id):
+    """Hidden challenges are withdrawn; locked challenges remain gated steps."""
+    return (QuestStep.query.join(Challenges, Challenges.id == QuestStep.challenge_id)
+            .filter(QuestStep.room_id == room_id, Challenges.state != "hidden")
+            .order_by(QuestStep.position).all())
+
+
 class Projection:
     """One batched read per table, regardless of team/room count.
 
@@ -88,6 +95,11 @@ class Projection:
             self.steps.setdefault(step.room_id, []).append(step)
             self.mapped[step.challenge_id] = step.room_id
         self.challenges = {c.id: c for c in Challenges.query.filter(Challenges.id.in_(list(self.mapped))).all()}
+        self.participant_steps = {
+            room_id: [s for s in steps if s.challenge_id in self.challenges
+                      and self.challenges[s.challenge_id].state != "hidden"]
+            for room_id, steps in self.steps.items()}
+        counted_ids = [s.challenge_id for steps in self.participant_steps.values() for s in steps]
         self.starts = {(s.team_id, s.room_id): s.started_at for s in QuestStart.query.all()}
         self.pauses = [(p.started_at, p.ended_at) for p in QuestPause.query.order_by(QuestPause.started_at).all()]
         self.corrections = {}
@@ -105,7 +117,7 @@ class Projection:
         for model, timestamp in ((Solves, Solves.date), (QuestRecoverySolve, QuestRecoverySolve.credited_at)):
             contributions.extend(model.query.with_entities(model.team_id, model.challenge_id, timestamp)
                                  .join(Users, Users.id == model.user_id)
-                                 .filter(Users.type == "user", Users.banned.isnot(True), model.team_id.isnot(None), model.challenge_id.in_(list(self.mapped)),
+                                 .filter(Users.type == "user", Users.banned.isnot(True), model.team_id.isnot(None), model.challenge_id.in_(counted_ids),
                                          ~model.user_id.in_(QuestMaintainer.query.with_entities(QuestMaintainer.user_id))).all())
         for team_id, challenge_id, at in contributions:
             room_id = self.mapped[challenge_id]
@@ -119,7 +131,7 @@ class Projection:
 
     def progress(self, room, team_id, solves=None):
         e = self.event
-        ids = [s.challenge_id for s in self.steps.get(room.id, [])]
+        ids = [s.challenge_id for s in self.participant_steps.get(room.id, [])]
         solves = solves if solves is not None else self.solves.get(team_id, {})
         milestones = prefix(ids, solves)
         start = self.starts.get((team_id, room.id))
@@ -139,25 +151,27 @@ class Projection:
         e = self.event
         solves = self.solves.get(team_id, {})
         p = self.progress(room, team_id, solves)
-        steps = self.steps.get(room.id, [])
+        participant_steps = self.participant_steps.get(room.id, [])
+        steps = self.steps.get(room.id, []) if admin else participant_steps
         enabled = bool(p["started_at"]) and e.status in ("live", "paused", "closed", "published")
         prefix_open, data = True, []
-        for step in steps:
+        for position, step in enumerate(steps):
             challenge = self.challenges.get(step.challenge_id)
             if challenge is None:
                 continue
             solved = step.challenge_id in solves
             visible = challenge.state == "visible"
-            if not admin and not prefix_open:
+            if not admin and (not prefix_open or not visible):
                 state = "locked"
             else:
                 state = "solved" if solved else ("available" if admin or (enabled and visible) else "locked")
-            data.append({"id": step.challenge_id, "title": challenge.name, "position": step.position,
+            data.append({"id": step.challenge_id, "title": challenge.name, "position": step.position if admin else position,
                          "state": state, "solved_at": iso(solves.get(step.challenge_id))})
             prefix_open = prefix_open and solved
         result = {"id": room.id, "slug": room.slug, "name": room.name, "subtitle": room.subtitle,
                   "description": room.description, "position": room.position, "theme": room.theme,
-                  "steps": data, "progress": p}
+                  "steps": data, "progress": p,
+                  "startable": bool(participant_steps) and self.challenges[participant_steps[0].challenge_id].state == "visible"}
         if admin:
             result["challenge_ids"] = [s.challenge_id for s in steps]
         return result
@@ -224,5 +238,5 @@ def standings(e=None, public=False):
                         "teams": [row for row in rows if row["rank"] == 1]})
     if public and not released(e):
         teams, leaders = [], []
-    return {"event": event_data(e), "rooms": [{"id": r.id, "slug": r.slug, "name": r.name, "total": len(projection.steps.get(r.id, []))} for r in rooms],
+    return {"event": event_data(e), "rooms": [{"id": r.id, "slug": r.slug, "name": r.name, "total": len(projection.participant_steps.get(r.id, []))} for r in rooms],
             "teams": teams, "room_leaders": leaders, "as_of": iso(projection.at)}
