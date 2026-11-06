@@ -90,6 +90,20 @@ Database credentials, Redis credentials and the CTFd session signing key come
 from Doppler through External Secrets. No organizer API token is embedded in
 the browser. Player actions use native CTFd sessions and CSRF protection.
 
+### Local image build on Mac OS
+
+Build and push a multi-arch (`linux/amd64` and `linux/arm64`) development
+image with Podman:
+
+```sh
+export IMAGE=quay.io/open-tech-quest/ctfd-plugin:devel
+podman manifest rm ${IMAGE}
+podman build --manifest ${IMAGE} \
+    --platform linux/amd64,linux/arm64 .
+
+podman manifest push ${IMAGE}
+```
+
 See [operations](docs/operations.md), [the product contract](docs/design.md),
 [release verification](docs/onboarding-validation.md) and [delivery plan](docs/implementation.md).
 
