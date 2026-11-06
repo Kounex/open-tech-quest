@@ -251,7 +251,7 @@ def install_guards(app):
         if not challenge or challenge.state != "visible":
             return denied("This challenge is not available", 404)
         prerequisites = {s.challenge_id for s in participant_steps(step.room_id) if s.position < step.position}
-        solved = set(solve_map(e).get(user.team_id, {}))
+        solved = set(solve_map(e, team_id=user.team_id).get(user.team_id, {}))
         if not solved >= prerequisites:
             return denied("Solve the previous steps before opening this challenge")
         if protected_solution and protected_solution.state == "solved" and challenge_id not in solved:

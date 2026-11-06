@@ -85,7 +85,7 @@ class Projection:
     No participant credentials or raw submitted flags are selected. Reuse one
     instance throughout a response so every view uses the same input history.
     """
-    def __init__(self, e=None):
+    def __init__(self, e=None, team_id=None, challenge_id=None):
         self.event = e or event()
         self.at = now()
         self.rooms = QuestRoom.query.order_by(QuestRoom.position, QuestRoom.id).all()
@@ -100,10 +100,21 @@ class Projection:
                       and self.challenges[s.challenge_id].state != "hidden"]
             for room_id, steps in self.steps.items()}
         counted_ids = [s.challenge_id for steps in self.participant_steps.values() for s in steps]
-        self.starts = {(s.team_id, s.room_id): s.started_at for s in QuestStart.query.all()}
+        starts = QuestStart.query
+        corrections = QuestCorrection.query
+        if team_id is not None:
+            starts = starts.filter_by(team_id=team_id)
+            corrections = corrections.filter_by(team_id=team_id)
+        if challenge_id is not None:
+            # Native detail/solve-count responses need credit for one challenge,
+            # rather than replaying the history of the entire competition.
+            room_id = self.mapped.get(challenge_id)
+            starts = starts.filter_by(room_id=room_id)
+            corrections = corrections.filter_by(room_id=room_id)
+        self.starts = {(s.team_id, s.room_id): s.started_at for s in starts.all()}
         self.pauses = [(p.started_at, p.ended_at) for p in QuestPause.query.order_by(QuestPause.started_at).all()]
         self.corrections = {}
-        for correction in QuestCorrection.query.all():
+        for correction in corrections.all():
             key = correction.team_id, correction.room_id
             self.corrections[key] = self.corrections.get(key, 0) + correction.adjustment_ms
         self.solves = {}
@@ -115,10 +126,15 @@ class Projection:
         from .recovery_models import QuestRecoverySolve
         contributions = []
         for model, timestamp in ((Solves, Solves.date), (QuestRecoverySolve, QuestRecoverySolve.credited_at)):
-            contributions.extend(model.query.with_entities(model.team_id, model.challenge_id, timestamp)
-                                 .join(Users, Users.id == model.user_id)
-                                 .filter(Users.type == "user", Users.banned.isnot(True), model.team_id.isnot(None), model.challenge_id.in_(counted_ids),
-                                         ~model.user_id.in_(QuestMaintainer.query.with_entities(QuestMaintainer.user_id))).all())
+            query = (model.query.with_entities(model.team_id, model.challenge_id, timestamp)
+                     .join(Users, Users.id == model.user_id)
+                     .filter(Users.type == "user", Users.banned.isnot(True), model.team_id.isnot(None), model.challenge_id.in_(counted_ids),
+                             ~model.user_id.in_(QuestMaintainer.query.with_entities(QuestMaintainer.user_id))))
+            if team_id is not None:
+                query = query.filter(model.team_id == team_id)
+            if challenge_id is not None:
+                query = query.filter(model.challenge_id == challenge_id)
+            contributions.extend(query.all())
         for team_id, challenge_id, at in contributions:
             room_id = self.mapped[challenge_id]
             start = self.starts.get((team_id, room_id))
@@ -177,16 +193,34 @@ class Projection:
         return result
 
 
-def solve_map(e=None):
-    return Projection(e).solves
+def projection(e=None, team_id=None, challenge_id=None):
+    """Reuse read projections only within the same HTTP GET and scope.
+
+    Writes always rebuild after their locking boundary. No cache survives a
+    request, so visibility, eligibility, clocks and publication stay current.
+    Scope 0 means no participant team; None deliberately means all teams.
+    """
+    from flask import g, has_request_context, request
+    if not has_request_context() or request.method != "GET":
+        return Projection(e, team_id=team_id, challenge_id=challenge_id)
+    key = (e.id if e is not None else 1, team_id, challenge_id)
+    if not hasattr(g, "quest_projections"):
+        g.quest_projections = {}
+    if key not in g.quest_projections:
+        g.quest_projections[key] = Projection(e, team_id=team_id, challenge_id=challenge_id)
+    return g.quest_projections[key]
+
+
+def solve_map(e=None, team_id=None):
+    return projection(e, team_id=team_id).solves
 
 
 def progress(room, team_id, solves=None, e=None):
-    return Projection(e).progress(room, team_id, solves)
+    return projection(e, team_id=team_id or 0).progress(room, team_id, solves)
 
 
 def room_data(room, team_id=None, admin=False, e=None):
-    return Projection(e).room(room, team_id, admin)
+    return projection(e, team_id=team_id or 0).room(room, team_id, admin)
 
 
 def standings(e=None, public=False):

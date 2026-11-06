@@ -17,7 +17,7 @@ from CTFd.utils.user import get_current_user, is_admin
 from .models import (QuestEvent, QuestRoom, QuestStep, QuestStart, QuestPause,
                      QuestExclusion, QuestCorrection, QuestAudit, QuestReadiness, QuestTeamName)
 from .service import (event, event_data, now, iso, parse_time, released,
-                      room_data, room_steps, participant_steps, standings, Projection)
+                      room_data, room_steps, participant_steps, standings, Projection, projection)
 
 from . import demo, onboarding, registration, roles, lifecycle
 from .models import QuestMaintainer
@@ -159,8 +159,8 @@ def viewer():
 
 def current_rooms():
     user = get_current_user()
-    projection = Projection()
-    return [projection.room(room, user.team_id if user else None, is_admin()) for room in projection.rooms]
+    view = projection(team_id=(user.team_id if user else None) or 0)
+    return [view.room(room, user.team_id if user else None, is_admin()) for room in view.rooms]
 
 
 @api.route("/bootstrap")

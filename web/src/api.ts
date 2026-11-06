@@ -10,6 +10,7 @@ export async function request<T>(
   path: string,
   method = "GET",
   body?: unknown,
+  signal?: AbortSignal,
 ): Promise<T> {
   let response: Response;
   try {
@@ -18,6 +19,7 @@ export async function request<T>(
       {
         method,
         credentials: "same-origin",
+        signal,
         headers: {
           Accept: "application/json",
           "X-Quest-Attendance-UI": "1",
