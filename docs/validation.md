@@ -156,3 +156,42 @@ anonymous full-image pull succeeded, and GitOps deployed the tested digest.
 Argo is Synced / Healthy and read-only live checks preserved event data/settings.
 See the [migration verification record](org-migration.md#verified-completion--2026-11-05)
 for source, image, CI/GitOps references, preserved history and rollback details.
+
+## Challenge visibility — 2026-11-06
+
+Release **0.1.17**, source `4f57c436aa747c565bb45ec67fe2e38e2dd8740c`, fixes
+Hidden/Visible/Locked authoring, participant paths, native access and unpublished
+award projections. [Release CI](https://github.com/open-tech-quest/ctfd-plugin/actions/runs/42240613877)
+passed 161 cases per SQLite/MariaDB (three dialect-specific skips each), frontend
+checks/build, empty-install runtime smoke and the publication image test stage.
+Eleven new real-native integration cases also passed independently on both
+databases. They cover hidden leading/middle steps, native detail/hints/attempts,
+Locked gates and retained credit, exact withdrawal/restoration prize times,
+recovery grading, staff previews, enum round-trips, unstartable/idempotent clocks,
+startup backfill and failed-native-edit atomicity. Independent review found and
+re-tested the native prerequisite gap before publication; no findings remained.
+
+Chromium checks using the actual React components and isolated synthetic API
+responses verified all three editor states, removal of hidden/locked selections,
+404 content clearing, retained content through transient 500 failures, and
+disabled starts for unavailable/empty paths. No production participation was
+created for verification.
+
+Anonymous full-image pull and OCI source/revision/version checks passed for
+`ghcr.io/open-tech-quest/ctfd-plugin:0.1.17@sha256:56c7e3bd1ae3c6f8fcbf6e13ba5afeb1544c503085f5cd67fe5b6af781eeac8c`.
+GitOps `8e238ffafea2e07efb475b1fe11d2160ac2c9206` pins both initialization
+and runtime; all 38 kustomizations built and schema-validated locally, and
+[GitOps CI](https://github.com/Kounex/ocp-gitops/actions/runs/42242045279) passed.
+Argo reached Synced/Healthy at that revision and the deployment completed.
+All three PVCs remained Bound and the Doppler ExternalSecret remained Ready.
+
+Read-only authenticated before/after checks matched event, onboarding,
+registration, accounts, teams, challenge catalog and room configuration; live
+frontend assets matched the built bytes. At verification the event was draft
+with five rooms, one visible challenge, one administrator, one maintainer and no
+participants/teams/readiness; registration was open and attendance closed.
+Startup may repair derived native Requirements/next links, preserving mapping,
+submission and timing history. No schema change was required. Private SQL/uploads
+backup: `/root/ocp-backups/ctfd/pre-visibility-20261106T150934Z/`.
+The previous 0.1.16 image remains available for rollback. Refresh existing Quest
+tabs once to load the new frontend behavior.
