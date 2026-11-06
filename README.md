@@ -90,6 +90,45 @@ Database credentials, Redis credentials and the CTFd session signing key come
 from Doppler through External Secrets. No organizer API token is embedded in
 the browser. Player actions use native CTFd sessions and CSRF protection.
 
+### Sizing and load testing
+
+Size for **simultaneously active participants**, not registered accounts alone.
+Visible pages poll even without submissions. Our room/standings mix generated
+roughly **0.45 API requests/second per participant**: about 45 requests/s for
+100 people or 180 requests/s for 400. External challenge workloads are separate.
+
+In November 2026, we tested plugin **0.1.16 / CTFd 3.8.9** on a shared
+8-vCPU OpenShift node. An isolated instance used 400 separate authenticated
+HTTP sessions, 50 teams of eight, 25 demo challenges and 500 seeded solves.
+We replayed browser-verified polling; separate runs covered correct/incorrect
+flags, cold downloads and sign-in/registration bursts. Measurements covered traffic,
+p95/p99 latency, 12-second client deadlines, CPU/throttling, RAM, database
+connections/lock waits and restarts.
+
+During the ramp, two workers with a 2-CPU limit had endpoint p95 below 350ms
+at 50 active users, slowed at 100 and timed out at 200. Four workers with 4 CPUs
+did not sustain 400. CPU demand and flag-write lock contention dominated; memory and warm
+network traffic were modest. These host-specific results are not universal
+capacity ratings.
+
+Our **next profile to validate**, not a proven 400-user configuration, is:
+
+| Component | CPU request / limit | Memory request / limit |
+|---|---|---|
+| CTFd, 8 Gunicorn worker processes in one pod | 6 / 8 cores | 2 / 4 GiB |
+| MariaDB | 1 / 2 cores | 1 / 2 GiB |
+| Redis | 250m / 500m | 128 / 256 MiB |
+
+The [event overlay](https://github.com/Kounex/ocp-gitops/tree/main/manifests/apps/ctfd/apps/overlays/event)
+implements this profile with `WORKERS=8` and database pools capped at 120
+application connections. Bound pools when increasing workers. Allow additional
+capacity for OpenShift; CPU limits alone do not reserve capacity.
+
+For your event, estimate active-page traffic, then test your hardware with
+representative team sizes, accumulated solves, flags and reconnect bursts.
+Leave CPU headroom and check tail latency and lock waits, not only throughput.
+Keep synthetic participants and progress in a disposable instance.
+
 ### Local image build on Mac OS
 
 Build and push a multi-arch (`linux/amd64` and `linux/arm64`) development
