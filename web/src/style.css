@@ -680,15 +680,66 @@ svg {
   grid-column: 1/-1;
   margin: 0;
 }
-.step-path {
-  padding: 0;
+.challenge-path {
+  min-width: 0;
+  max-width: 100%;
   margin: 40px 0 32px;
+}
+.challenge-path-heading,
+.challenge-path-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.challenge-path-heading {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.challenge-path-heading h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.challenge-path-heading > div > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.challenge-path-heading > .challenge-path-controls {
+  flex-shrink: 0;
+  gap: 8px;
+}
+.challenge-path-controls button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid #aaaab3;
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.challenge-path-controls button:hover:not(:disabled) {
+  border-color: var(--cyan);
+  background: #edf8f9;
+}
+.challenge-path-controls button:first-child svg {
+  transform: rotate(180deg);
+}
+.step-path {
+  position: relative;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 6px 6px 12px;
+  margin: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #aaaab3 #ececf0;
   list-style: none;
   display: flex;
   gap: 8px;
 }
 .step-path > li {
-  flex: 1;
+  flex: 1 0 224px;
   min-width: 0;
   border-top: 3px solid #d4d4dc;
   background: #ececf0;
@@ -697,12 +748,13 @@ svg {
   display: flex;
   gap: 12px;
   text-align: left;
-  align-items: center;
+  align-items: flex-start;
   border: 0;
   background: none;
   padding: 16px;
   width: 100%;
-  min-height: 92px;
+  height: 100%;
+  min-height: 116px;
   opacity: 1;
 }
 .step-path button:disabled {
@@ -730,7 +782,12 @@ svg {
 }
 .step-label > strong {
   font-size: 14px;
+  line-height: 1.45;
   overflow-wrap: anywhere;
+}
+.step-path:focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 2px;
 }
 .step-solved {
   border-top-color: var(--cyan) !important;
@@ -1121,9 +1178,88 @@ textarea {
 }
 .stage-table .cell-progress:after,
 .stage-table .cell-progress > i {
-  height: 2px;
+  height: 6px;
   left: 4px;
   right: 4px;
+}
+.stage-table .cell-progress {
+  line-height: 16px;
+  padding-bottom: 8px;
+}
+.stage-table .cell-progress > span {
+  display: block;
+  line-height: 16px;
+}
+.stage-table td.room-col {
+  padding-block: 3px;
+}
+.stage-room .stage-table .team-col {
+  width: 176px;
+}
+.stage-room .stage-table .score-col {
+  width: 80px;
+}
+.stage-room .stage-table thead th {
+  height: 64px;
+}
+.stage-table .path-col {
+  padding-inline: 8px;
+}
+.stage-table thead .path-col {
+  white-space: normal;
+}
+.stage-path-axis {
+  display: block;
+  position: relative;
+  height: 18px;
+  margin-top: 8px;
+  line-height: 18px;
+  font-size: 12px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.stage-path-axis.individual {
+  display: flex;
+  gap: 3px;
+  text-align: center;
+}
+.stage-path-axis.grouped > span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+.stage-path-axis.grouped > span:first-child {
+  transform: none;
+}
+.stage-path-axis.grouped > span:last-child {
+  transform: translateX(-100%);
+}
+.stage-path-progress {
+  display: flex;
+  position: relative;
+  height: 14px;
+  gap: 3px;
+}
+.stage-path-progress.individual > i {
+  flex: 1;
+  background: #e6e6eb;
+}
+.stage-path-progress.individual > i.filled,
+.stage-path-fill {
+  background: var(--cyan);
+}
+.stage-path-progress.grouped {
+  background: #e6e6eb;
+}
+.stage-path-guide {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 1px;
+  background: #fff;
+}
+.stage-path-progress.complete > i.filled,
+.stage-path-progress.complete > .stage-path-fill {
+  background: #006a77;
 }
 .stage-footer {
   display: flex;
@@ -1629,6 +1765,9 @@ fieldset {
   }
 }
 @media (max-width: 1150px) {
+  .stage-room .stage-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .event-label {
     display: none;
   }
@@ -1662,12 +1801,6 @@ fieldset {
   }
   .room-intro {
     gap: 32px;
-  }
-  .step-path {
-    flex-wrap: wrap;
-  }
-  .step-path > li {
-    flex-basis: calc(33% - 8px);
   }
   .rules-strip {
     grid-template-columns: 160px 1fr;
@@ -1885,23 +2018,15 @@ fieldset {
   .start-panel > .button {
     justify-self: start;
   }
-  .step-path {
-    display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    gap: 8px;
+  .challenge-path {
     margin: 28px 0 24px;
-    padding-bottom: 4px;
   }
-  .step-path > li {
-    flex: 0 0 188px;
+  .challenge-path-heading > div:first-child {
+    display: block;
   }
-  .step-path button {
-    padding: 12px;
-    min-height: 88px;
-  }
-  .step-label > strong {
-    font-size: 13px;
+  .challenge-path-heading h2 {
+    font-size: 17px;
+    margin-bottom: 4px;
   }
   .challenge-panel {
     padding: 24px 20px;

@@ -47,7 +47,10 @@ Use `--draft` to exercise allocation and topology editing before opening. All
 fixture accounts use the public password `quest-demo-only`: organizer account
 `organizer`; the untouched shared participant team Atlas has `atlas-one` and
 `atlas-two`. Restart running workers after reseeding to clear process caches.
-The fixture is excluded from the production image and is never auto-seeded.
+Use `--challenges-per-room 14` or `--challenges-per-room 30` to verify long
+challenge paths and projector progress at realistic team counts. The default
+remains five challenges per room. The fixture is excluded from the production
+image and is never auto-seeded.
 
 Organizer timing corrections are cumulative per team/room, limited to ±24 hours,
 clamped at zero active elapsed time, reasoned and audited. They affect room award

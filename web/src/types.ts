@@ -87,7 +87,7 @@ export interface StandingTeam {
 }
 export interface Standings {
   event: QuestEvent;
-  rooms: Room[];
+  rooms: (Pick<Room, "id" | "slug" | "name"> & { total: number })[];
   teams: StandingTeam[];
   room_leaders: Record<string, StandingTeam[]>;
   as_of: string;

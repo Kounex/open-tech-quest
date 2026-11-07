@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { dateTime, duration } from "./api";
 import { useResource } from "./hooks";
-import type { Projector, Room, StandingTeam, Standings } from "./types";
+import type { Projector, StandingTeam, Standings } from "./types";
 import { Empty, Link, Notice } from "./ui";
+import { milestoneLayout, progressFraction } from "./stage-progress";
+type StandingRoom = Standings["rooms"][number];
 export function StandingsPage() {
   const state = useResource<Standings>("/standings", 10000),
     [roomSlug, setRoomSlug] = useState("overall");
@@ -73,7 +75,7 @@ export function StandingsPage() {
     </>
   );
 }
-function orderedTeams(teams: StandingTeam[], room?: Room) {
+function orderedTeams(teams: StandingTeam[], room?: StandingRoom) {
   if (!room)
     return [...teams].sort(
       (a, b) =>
@@ -98,10 +100,22 @@ function StandingTable({
 }: {
   data: Standings;
   teams: StandingTeam[];
-  room?: Room;
+  room?: StandingRoom;
   stage?: boolean;
   overall?: boolean;
 }) {
+  const pathHeading = useRef<HTMLTableCellElement>(null);
+  const [pathWidth, setPathWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = pathHeading.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() =>
+      setPathWidth(element.clientWidth - 16),
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [stage, room?.id]);
+  const milestones = milestoneLayout(room?.total || 0, pathWidth);
   return (
     <table
       className={`standing-table${stage ? " stage-table" : ""}`}
@@ -119,7 +133,9 @@ function StandingTable({
           <th scope="col" className="rank-col">
             Rank
           </th>
-          <th scope="col">Team</th>
+          <th scope="col" className="team-col">
+            Team
+          </th>
           {!room &&
             !overall &&
             data.rooms.map((r) => (
@@ -127,6 +143,28 @@ function StandingTable({
                 {r.name}
               </th>
             ))}
+          {stage && room && (
+            <th scope="col" className="path-col" ref={pathHeading}>
+              <span>Challenge path</span>
+              <span
+                className={`stage-path-axis ${milestones.individual ? "individual" : "grouped"}`}
+                aria-hidden="true"
+              >
+                {milestones.labels.map((value) => (
+                  <span
+                    key={value}
+                    style={
+                      milestones.individual
+                        ? { width: `${100 / room.total}%` }
+                        : { left: `${(100 * value) / room.total}%` }
+                    }
+                  >
+                    {value}
+                  </span>
+                ))}
+              </span>
+            </th>
+          )}
           <th scope="col" className="score-col">
             Solved
           </th>
@@ -155,26 +193,61 @@ function StandingTable({
                     <td className="room-col" key={r.id}>
                       <span
                         className={`cell-progress ${p?.complete ? "complete" : ""}`}
-                        aria-label={`${r.name}: ${p?.solved || 0} of ${p?.total || 0} solved`}
+                        role="img"
+                        aria-label={`${r.name}: ${p?.solved || 0} of ${p?.total ?? r.total} consecutive challenges solved`}
                       >
                         <span>
                           {p?.solved || 0}
-                          <small>/{p?.total || 0}</small>
+                          <small>/{p?.total ?? r.total}</small>
                         </span>
                         <i
                           style={{
-                            transform: `scaleX(${p?.total ? p.solved / p.total : 0})`,
+                            transform: `scaleX(${progressFraction(p?.solved || 0, p?.total ?? r.total)})`,
                           }}
                         />
                       </span>
                     </td>
                   );
                 })}
+              {stage && room && (
+                <td className="path-col">
+                  <span
+                    className={`stage-path-progress ${milestones.individual ? "individual" : "grouped"} ${progress?.complete ? "complete" : ""}`}
+                    role="img"
+                    aria-label={`${progress?.solved || 0} of ${progress?.total ?? room.total} consecutive challenges solved`}
+                  >
+                    {milestones.individual ? (
+                      milestones.labels.map((value) => (
+                        <i
+                          key={value}
+                          className={
+                            value <= (progress?.solved || 0) ? "filled" : ""
+                          }
+                        />
+                      ))
+                    ) : (
+                      <>
+                        <i
+                          className="stage-path-fill"
+                          style={{
+                            width: `${100 * progressFraction(progress?.solved || 0, progress?.total ?? room.total)}%`,
+                          }}
+                        />
+                        {milestones.labels.slice(1, -1).map((value) => (
+                          <i
+                            key={value}
+                            className="stage-path-guide"
+                            style={{ left: `${(100 * value) / room.total}%` }}
+                          />
+                        ))}
+                      </>
+                    )}
+                  </span>
+                </td>
+              )}
               <td className="score-col">
                 {room ? progress?.solved || 0 : team.total}
-                {room && (
-                  <small>/{progress?.total || room.steps?.length || 0}</small>
-                )}
+                {room && <small>/{progress?.total ?? room.total}</small>}
               </td>
               <td className="time-col">
                 {duration(
@@ -282,7 +355,9 @@ export function Stage() {
               ? "The quest awards"
               : view === "room" && room
                 ? `${room.name} standings`
-                : "Every team. Every room."}
+                : view === "overall"
+                  ? "Overall standings"
+                  : "Every team. Every room."}
           </h1>
           <span>
             {data.event.results_published
@@ -335,6 +410,13 @@ export function Stage() {
       )}
       <footer className="stage-footer">
         <span>
+          {view === "room" && room
+            ? "Consecutive challenges solved · "
+            : view === "overall"
+              ? "Distinct challenges solved · "
+              : view === "awards"
+                ? "Prize standings · "
+                : "Room progress: solved / total · "}
           {data.teams.length} teams · {data.rooms.length} rooms ·{" "}
           {data.event.results_published
             ? "Published results"

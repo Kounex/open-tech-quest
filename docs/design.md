@@ -162,7 +162,13 @@ session and CTFd CSRF checks. No administrator token in the browser.
 `Standings`: `event`, `rooms`, `teams`, `room_leaders`, `as_of`.
 `StandingTeam`: `id`, `name`, `rank`, `total`, `overall_elapsed_ms`,
 `room_progress` (room_id, solved, total, milestone_elapsed_ms, rank, complete).
-Public standings expose team display names and aggregate results only.
+Standings room summaries contain `id`, `slug`, `name` and authoritative `total`;
+they do not contain full room steps or participant progress. Projected room paths
+visualize the consecutively solved prefix, using individual challenge marks when
+readable and exact proportional progress with numbered milestones for long paths.
+The overview uses room-level counts and progress tracks, so long chains never
+create extra room columns. Public standings expose team display names and
+aggregate results only.
 
 ### Participant and projector
 

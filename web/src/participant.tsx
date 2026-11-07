@@ -5,6 +5,7 @@ import { useResource } from "./hooks";
 import { Arrow, Check, Empty, Link, Markdown, Notice } from "./ui";
 import { RoomArt, RoomLogo, roomThemeStyle } from "./room-art";
 import { ParticipantOnboarding } from "./onboarding";
+import { ChallengePath } from "./challenge-path";
 export function EventNotice({ data }: { data: Bootstrap }) {
   const { event, viewer } = data;
   return (
@@ -406,38 +407,13 @@ export function RoomPage({
         <>
           {solveMessage && <Notice tone="success">{solveMessage}</Notice>}
           {progressMessage && <Notice>{progressMessage}</Notice>}
-          <ol
-            className="step-path"
-            aria-label="Challenge path"
+          <ChallengePath
+            key={`room-path-${room.id}`}
+            steps={room.steps}
+            selectedId={step?.id}
+            onSelect={setSelected}
             style={roomThemeStyle(room)}
-          >
-            {room.steps.map((s, index) => (
-              <li
-                key={s.id}
-                className={`step-${s.state} ${step?.id === s.id ? "selected" : ""}`}
-              >
-                <button
-                  disabled={s.state === "locked"}
-                  onClick={() => setSelected(s.id)}
-                  aria-current={step?.id === s.id ? "step" : undefined}
-                >
-                  <span className="step-number">
-                    {s.state === "solved" ? <Check /> : index + 1}
-                  </span>
-                  <span className="step-label">
-                    <small>
-                      {s.state === "solved"
-                        ? "Solved"
-                        : s.state === "locked"
-                          ? "Locked"
-                          : "Available"}
-                    </small>
-                    <strong>{s.title}</strong>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ol>
+          />
           {room.progress.status === "complete" && (
             <div className="completion" role="status">
               <Check />
