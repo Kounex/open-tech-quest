@@ -173,7 +173,7 @@ connection limits if increasing workers; do not exceed the database budget.
 
 Use one CTFd replica with the MariaDB and Redis resources in the component table.
 The following is a **strategic merge patch for an existing CTFd Deployment**;
-add it to your Kustomization's `patches` list. It is not a standalone installation.
+add it to your Kustomization's `patches` list and adjust the namespace if needed. It is not a standalone installation.
 The linked event overlay provides the complete deployment, pinned image,
 services, volumes and secret references.
 
@@ -182,6 +182,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ctfd
+  namespace: ctfd
 spec:
   replicas: 1
   template:
