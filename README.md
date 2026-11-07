@@ -132,6 +132,84 @@ implements this profile: total requests 9.25 CPU / 3.125 GiB, limits 12.5 CPU /
 cap; their pools allow at most 120 application connections. Recheck pool limits
 when changing workers. CPU limits do not reserve capacity.
 
+#### Planning for 50–500 attendees
+
+Assume every attendee has an active page, the same polling intervals and room /
+standings mix, and roughly eight people per team. **Only the 400-attendee row is
+load-tested with 0.1.18**; the other rows are starting estimates, not capacity
+certifications. Registered accounts with closed pages do not create this load.
+
+| Active attendees | Approx. API requests/s | CTFd CPU request / limit | Evidence |
+|---:|---:|---:|---|
+| 50 | 23 | 1 / 1.5 cores | Estimate |
+| 100 | 45 | 2 / 2.5 cores | Estimate |
+| 150 | 68 | 3 / 4 cores | Estimate |
+| 200 | 90 | 4 / 5 cores | Estimate |
+| 250 | 113 | 5 / 6.5 cores | Estimate |
+| 300 | 135 | 6 / 7.5 cores | Estimate |
+| 350 | 158 | 7 / 9 cores | Estimate |
+| **400** | **180–182** | **8 / 10 cores** | **Measured** |
+| 450 | 203 | 9 / 11.5 cores | Estimate; above tested attendance |
+| 500 | 225 | 10 / 12.5 cores | Estimate; above tested attendance |
+
+The estimate scales the measured 400-person allocation: CPU request =
+`8 × attendees / 400`, CPU limit = `10 × attendees / 400`, rounded up to half a
+core. This preserves the measured headroom above approximately six steady
+application cores at 400. It is a planning model: history size, challenge content,
+team count, simultaneous submissions and hardware can change the result.
+
+To isolate that CPU estimate, **all rows retain 12 workers and CTFd RAM of
+2 / 4 GiB**, plus the MariaDB and Redis allocations above. Their combined
+allocation adds **1.25 requested / 2.5 limited CPU** and **1.125 / 2.25 GiB RAM**
+to each CTFd row. Smaller worker/RAM profiles may save resources, but were not
+benchmarked. RAM should not be scaled down in direct proportion to attendance.
+
+Above 400, validate both steady traffic and larger bursts before committing to
+the allocation: 450 and 500 attendees mean approximately 57 and 63 teams at
+this team size. More CPU does not remove the shared flag-write lock. Recheck
+connection limits if increasing workers; do not exceed the database budget.
+
+#### OpenShift configuration example: 400 attendees
+
+Use one CTFd replica with the MariaDB and Redis resources in the component table.
+The following is a **strategic merge patch for an existing CTFd Deployment**;
+add it to your Kustomization's `patches` list. It is not a standalone installation.
+The linked event overlay provides the complete deployment, pinned image,
+services, volumes and secret references.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ctfd
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: ctfd
+          env:
+            - name: WORKERS
+              value: "12"
+            - name: SQLALCHEMY_MAX_OVERFLOW
+              value: "0"
+          resources:
+            requests:
+              cpu: "8"
+              memory: 2Gi
+            limits:
+              cpu: "10"
+              memory: 4Gi
+```
+
+Provide a node with room for the CTFd pod's full eight-CPU / two-GiB request,
+plus the other workloads scheduled there. The full stack requests **9.25 CPU /
+3.125 GiB** and limits **12.5 CPU / 6.25 GiB**, excluding OpenShift itself.
+Existing persistent-volume requests total **21 GiB** (CTFd uploads/logs 10,
+MariaDB 10, Redis 1). Provision the default StorageClass, event-specific secrets
+and platform capacity separately, as described in the
+[event bootstrap guide](https://github.com/Kounex/ocp-gitops/tree/main/cluster/event).
+
 The final capacity hold originated inside the cluster through its public Route.
 In-cluster cold downloads passed all 7,600 requests, while external connection
 stress exposed socket closures and connection deadlines with spare CPU. Validate
