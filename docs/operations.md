@@ -218,9 +218,9 @@ Runtime credentials arrive through environment Secret references. The image
 contains neither participant data nor production credentials.
 
 The first GHCR package publication requires making the package public once
-in GitHub's package settings. Verify an anonymous pull before changing GitOps.
-Pin the tested tag and digest in both CTFd init and application containers;
-Argo handles the rollout. MariaDB, Redis, uploads and logs retain their PVCs.
+in GitHub's package settings. Verify an anonymous pull before deployment.
+Pin the tested tag and digest in the application and any migration/init
+containers. Preserve database, cache and upload/log storage during upgrades.
 
 Plugin migrations run before request serving. Take a database/uploads backup
 before an upgrade and retain the previously working image reference. Rolling
